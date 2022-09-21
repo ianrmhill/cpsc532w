@@ -1,3 +1,0 @@
-[2022-09-19 13:00:39,189][__main__][INFO] - #1 (enum and cond) : There is a 64.71% chance it is cloudy given the grass is wet
-[2022-09-19 13:00:39,201][__main__][INFO] - #2 (ancestral + reject) : The chance of it being cloudy given the grass is wet is 63.00%
-[2022-09-19 13:00:39,201][__main__][INFO] - #2 (ancestral + reject) : 27.01% of the total samples were rejected

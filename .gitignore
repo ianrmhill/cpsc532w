@@ -1,2 +1,5 @@
 532w_venv/
 /.idea
+/outputs
+/images
+/.ipynb_checkpoints
