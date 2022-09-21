@@ -1,0 +1,11 @@
+digraph {
+	slope [label=slope fillcolor=white shape=plain style=filled]
+	bias [label=bias fillcolor=white shape=plain style=filled]
+	subgraph cluster_data {
+		label=data labeljust=r labelloc=b
+		obs [label=obs fillcolor=grey shape=ellipse style=filled]
+	}
+	slope -> obs
+	bias -> obs
+	distribution_description_node [label="obs ~ Normal\lslope : Real()\lbias : Real()\l" shape=plaintext]
+}
