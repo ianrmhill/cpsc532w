@@ -78,11 +78,11 @@ plt.ylim(bottom=0.)
 # Probabilistic model
 def model(x, y):
     # NOTE: You need to fill this in
-    slope = pyro.param('slope', dist.Normal(0.0, 10.0))
-    bias = pyro.param('bias', dist.Normal(0.0, 10.0))
-    zn = (slope * x) + bias
-    with pyro.plate('data', len(x)):
-        return pyro.sample('obs', dist.Normal(zn, 1), obs=y)
+    s = pyro.sample("slope", dist.Normal(0.0, 10.0))
+    c = pyro.sample("bias", dist.Normal(0.0, 10.0))
+    zn = (s * x) + c
+    with pyro.plate("data", len(x)):
+        return pyro.sample("obs", dist.Normal(zn, 1), obs=y)
 
 
 # Make a plot of the graph
@@ -94,7 +94,7 @@ pyro.clear_param_store()
 # These should be reset each training loop
 # NOTE: You need to fill this in
 guide = pyro.infer.autoguide.AutoNormal(model)
-adam = pyro.optim.Adam({'lr': 0.001, 'betas': (0.9, 0.99)})
+adam = pyro.optim.Adam({'lr': 0.003, 'betas': (0.9, 0.99)})
 elbo = pyro.infer.Trace_ELBO()
 svi = pyro.infer.SVI(model, guide, adam, loss=elbo)
 steps = 10000
@@ -229,8 +229,13 @@ n = int(1e3)
 # Calculate the posterior predictive at the new data point
 ys_new = []
 for _ in range(n):
-     # NOTE: You need to fill this in
-    continue
+    # NOTE: You need to fill this in
+    sample = guide.forward(x_new)
+    ys_new.append(((sample['slope'].detach().numpy() * x_new.numpy()) + sample['bias'].detach().numpy())[0])
+    #guide_trace = pyro.poutine.trace(guide).get_trace(x_new)
+    # sample observations given latent variables
+    #blockreplay = pyro.poutine.block(fn=pyro.poutine.replay(model, guide_trace), expose=['obs'])
+    #posterior_predictive = pyro.sample('pred_obs', blockreplay, x_new)
 
 
 # Plot posterior predictive
@@ -249,7 +254,7 @@ plt.show()
 # Regression model
 def regression(x, slope, bias):
     # NOTE: Fill this in
-    return None
+    return (x*slope) + bias
 
 
 # Data for posterior predictive
