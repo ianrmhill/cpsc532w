@@ -88,13 +88,16 @@ def my_app(cfg: DictConfig) -> None:
     # NOTE: Fill this in...
     # Observing that w is 1 (i.e. it's true that the grass is wet, we simply sum the joint probabilities across all dims
     # except for w, then read out the sum for w=1. Dim index of w is 3.
-    p_C_given_W = torch.sum(p, dim=(0, 1, 2))
+    d = torch.index_select(p, 3, torch.tensor(1))
+    d_sum = torch.sum(d, dim=(1, 2))
+    d_nottorch = np.array(d_sum)
+    odds = float(d_nottorch[1] / (np.sum(d_nottorch)))
 
-    log.info('#1 (enum and cond) : There is a {:.2f}% chance it is cloudy given the grass is wet'.format(p_C_given_W[1]*100))
+    log.info('#1 (enum and cond) : There is a {:.2f}% chance it is cloudy given the grass is wet'.format(odds*100))
 
     if wandb_logging:
         wandb.log({'prob_cloudy_given_wet_grass': {
-                  'enum and cond': p_C_given_W[1]*100}})
+                  'enum and cond': odds*100}})
 
     # things to think about here: when can you enumerate?  and what
     # is the computational complexity of enumeration?
@@ -120,15 +123,14 @@ def my_app(cfg: DictConfig) -> None:
         # Calculate p(x) using the enumerated joint and accept or reject, but we're gonna shortcut since we know
         # we will only and always accept when w = 1
         if x[3] == 1:
-            samples[i] = 1
+            samples[i] = x[0]
+            i += 1
         else:
-            samples[i] = 0 # Can remove since already initialized to 0
             rejections += 1
-        i += 1
 
     log.info('#2 (ancestral + reject) : The chance of it being cloudy given the grass is wet is {:.2f}%'.format(samples.mean()*100))
     log.info('#2 (ancestral + reject) : {:.2f}% of the total samples were rejected'.format(
-        100*rejections/float(num_samples))) # FIXED
+        100*rejections/float(num_samples+rejections))) # FIXED
 
     # things to think about here: when will rejection sampling be efficient or 
     # even possible?  can you rejection sample if the conditioning event is
@@ -170,6 +172,7 @@ def my_app(cfg: DictConfig) -> None:
 
     # NOTE: Fill this in
     i=0
+    good_samples = []
     while i < num_samples:
         p_C_curr = p_C_given_S_R[:, state[1], state[2]]
         state[0] = dist.Categorical(p_C_curr).sample()
@@ -182,13 +185,15 @@ def my_app(cfg: DictConfig) -> None:
 
         joint_prob = p[state[0], state[1], state[2], state[3]]
         samples[i] = state[3]
+        if state[3] == 1:
+            good_samples.append(state[0].item())
         i += 1
 
         if wandb_logging:
             wandb.log({'gibbs':{'iteration':i, 'c':state[0], 's':state[1], 'r':state[2], 'w':state[3], 'p(c,s,r,w)':joint_prob}})
 
     # NOTE: Fill this in
-    pcgwg = samples.mean() * 100
+    pcgwg = np.mean(good_samples) * 100
     if wandb_logging:
         wandb.log({'prob_cloudy_given_wet_grass':{'gibbs':pcgwg}})
 

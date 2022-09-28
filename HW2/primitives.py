@@ -17,8 +17,21 @@ def hashmap(*x):
     values = [value for value in x[1::2]]
     return dict(zip(keys, values))
 
-# Primative function dictionary
-# NOTE: You should complete this
+
+def getindex(x, i):
+    if type(i) == tc.Tensor:
+        i = i.item()
+    return x[i]
+
+
+def putindex(x, i, v):
+    if type(i) == tc.Tensor:
+        i = i.item()
+    x[i] = v
+    return x
+
+
+# Primitive function dictionary
 primitives = {
 
     # Comparisons
@@ -29,7 +42,9 @@ primitives = {
     # Math
     '+': tc.add,
     '-': tc.sub,
-    # ...
+    'sqrt': tc.sqrt,
+    '*': tc.mul,
+    '/': tc.div,
 
     # Containers
     'vector': vector,
@@ -44,4 +59,12 @@ primitives = {
     'normal': tc.distributions.Normal,
     # ...
 
+    # List Operations
+    'get': getindex,
+    'put': putindex,
+    'first': lambda x: x[0],
+    'last': lambda x: x[-1],
+    # Imagine writing a library where you have to do the below just to append to a vector, incredible
+    # I know GPUs are picky buggers but come on
+    'append': lambda x, v: tc.cat((x, tc.unsqueeze(v, dim=-1)))
 }
