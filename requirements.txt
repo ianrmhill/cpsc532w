@@ -2,4 +2,5 @@ torch >= 1.0.2
 omegaconf
 wandb
 numpy
+scipy
 hydra-core
