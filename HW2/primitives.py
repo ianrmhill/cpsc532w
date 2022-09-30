@@ -20,13 +20,13 @@ def hashmap(*x):
 
 def getindex(x, i):
     if type(i) == tc.Tensor:
-        i = i.item()
+        i = int(i.item())
     return x[i]
 
 
 def putindex(x, i, v):
     if type(i) == tc.Tensor:
-        i = i.item()
+        i = int(i.item())
     x[i] = v
     return x
 
@@ -35,14 +35,24 @@ def ternary(c, a, b):
     return a if c else b
 
 
+def transpose(x):
+    return tc.transpose(x, 0, 1)
+
+
+def repeat_matrix(x, rows, cols):
+    return x.repeat(int(rows), int(cols))
+
+
 # Primitive function dictionary
 primitives = {
 
     # Comparisons
     '<': tc.lt,
     '<=': tc.le,
+    '>': tc.gt,
+    '>=': tc.ge,
+    '==': tc.eq,
     'if': ternary,
-    # ...
 
     # Math
     '+': tc.add,
@@ -54,21 +64,28 @@ primitives = {
     # Containers
     'vector': vector,
     'hash-map': hashmap,
-    # ...
 
     # Matrices
     'mat-mul': tc.matmul,
-    # ...
+    'mat-transpose': transpose,
+    'mat-add': tc.add,
+    'mat-repmat': repeat_matrix,
+    'mat-tanh': tc.tanh,
 
     # Distributions
     'normal': tc.distributions.Normal,
-    # ...
+    'beta': tc.distributions.Beta,
+    'exponential': tc.distributions.Exponential,
+    'uniform-continuous': tc.distributions.Uniform,
+    'discrete': tc.distributions.Categorical,
 
     # List Operations
     'get': getindex,
     'put': putindex,
     'first': lambda x: x[0],
+    'second': lambda x: x[1],
     'last': lambda x: x[-1],
+    'rest': lambda x: x[1:],
     # Imagine writing a library where you have to do the below just to append to a vector, incredible
     # I know GPUs are picky buggers but come on
     'append': lambda x, v: tc.cat((x, tc.unsqueeze(v, dim=-1)))

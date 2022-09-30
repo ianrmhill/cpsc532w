@@ -117,7 +117,7 @@ def run_all(cfg):
     tests = cfg['deterministic_tests']
     run_tests(tests, mode=mode, test_type='deterministic', base_dir=base_dir, daphne_dir=daphne_dir, compile=compile)
 
-    # Proababilistic tests
+    # Probabilistic tests
     tests = cfg['probabilistic_tests']
     run_tests(tests, mode=mode, test_type='probabilistic', base_dir=base_dir, daphne_dir=daphne_dir, compile=compile)
 
