@@ -10,14 +10,14 @@ from daphne import load_program
 from tests import is_tol, run_probabilistic_test, load_truth
 from general_sampling import get_sample, prior_samples
 from evaluation_based_sampling import abstract_syntax_tree
-from graph_based_sampling import graph
+from graph_based_sampling import Graph
 from utils import wandb_plots
 
 def create_class(ast_or_graph, mode):
     if mode == 'desugar':
         return abstract_syntax_tree(ast_or_graph)
     elif mode == 'graph':
-        return graph(ast_or_graph)
+        return Graph(ast_or_graph)
     else:
         raise ValueError('Input type not recognised')
 

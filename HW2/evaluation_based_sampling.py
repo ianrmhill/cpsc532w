@@ -6,6 +6,8 @@ from primitives import primitives # NOTE: Import and use this!
 
 class abstract_syntax_tree:
     def __init__(self, ast_json):
+        if type(ast_json) == int:
+            ast_json = [[ast_json]]
         self.ast_json = ast_json
         # NOTE: You need to write this!
         # No I don't???
@@ -67,11 +69,11 @@ def interpret(ast, env):
         return interpret(ast[2], env)
 
     # Case where we are obtaining a sample from a distribution
-    elif ast[0] == 'sample':
+    elif ast[0] == 'sample' or ast[0] == 'sample*':
         return interpret(ast[1], env)[0].sample(), None, None
 
     # Case where we are observing a random variable
-    elif ast[0] == 'observe':
+    elif ast[0] == 'observe' or ast[0] == 'observe*':
         # For HW2 we ignore the conditioning expression, just return a distribution sample
         return interpret(ast[1], env)[0].sample(), None, None
 

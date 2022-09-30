@@ -78,6 +78,7 @@ primitives = {
     'exponential': tc.distributions.Exponential,
     'uniform-continuous': tc.distributions.Uniform,
     'discrete': tc.distributions.Categorical,
+    'bernoulli': tc.distributions.Bernoulli,
 
     # List Operations
     'get': getindex,
@@ -86,6 +87,7 @@ primitives = {
     'second': lambda x: x[1],
     'last': lambda x: x[-1],
     'rest': lambda x: x[1:],
+    'nth': lambda x, i: x[int(i)-1],
     # Imagine writing a library where you have to do the below just to append to a vector, incredible
     # I know GPUs are picky buggers but come on
     'append': lambda x, v: tc.cat((x, tc.unsqueeze(v, dim=-1)))

@@ -4,3 +4,5 @@ wandb
 numpy
 scipy
 hydra-core
+scikit-learn
+pandas
