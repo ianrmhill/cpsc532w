@@ -31,12 +31,17 @@ def putindex(x, i, v):
     return x
 
 
+def ternary(c, a, b):
+    return a if c else b
+
+
 # Primitive function dictionary
 primitives = {
 
     # Comparisons
     '<': tc.lt,
     '<=': tc.le,
+    'if': ternary,
     # ...
 
     # Math

@@ -11,6 +11,12 @@ class abstract_syntax_tree:
         # No I don't???
 
 
+class YummyEnv:
+    def __init__(self):
+        pass
+
+
+
 def evaluate_program(ast, verbose=False):
     eval_env = {}
     result = interpret(ast.ast_json[0], eval_env)
@@ -24,9 +30,13 @@ def interpret(ast, env):
     # First layer 'q', program can only have one expression, optionally with leading defn statements
     if ast[0] == 'defn':
         # Construct the function
-        env[ast[1]] = ast[3](ast[2])
+        sub_env = ast[2]
+        args = ast[1]
+        def thefunc(*args):
+            return interpret(ast[3], sub_env)
+        env[ast[1]] = thefunc
         # Recurse with the final element 'q' forming the rest of the program
-        return interpret(ast[4:], env)
+        return interpret(ast[4], env)
     else:
         # Case where expression is a let block
         if ast[0] == 'let':
@@ -47,7 +57,16 @@ def interpret(ast, env):
 
         # Cases 'v' and 'f' where expression is a variable or user defined function
         elif ast[0] in env.keys():
-            return env[ast[0]], None, None
+            # Case 'v'
+            if len(ast) == 1:
+                return env[ast[0]], None, None
+            # Case 'f'
+            else:
+                # First add all argument values to the local scope
+                for i in range(ast[1]):
+                    env[ast[0]][1][i] = ast[1][i]
+                # Now run the procedure using the set up local scope
+                return env[ast[0]][0](ast[1], env[ast[0][1]])
 
         # Default case should error out
         else:
