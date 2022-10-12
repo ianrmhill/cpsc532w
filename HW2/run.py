@@ -13,6 +13,7 @@ from evaluation_based_sampling import abstract_syntax_tree
 from graph_based_sampling import Graph
 from utils import wandb_plots
 
+
 def create_class(ast_or_graph, mode):
     if mode == 'desugar':
         return abstract_syntax_tree(ast_or_graph)
