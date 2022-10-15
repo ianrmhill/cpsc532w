@@ -1,5 +1,19 @@
 import wandb
 
+
+def log_sample(sample, i, wandb_name):
+    '''
+    Log an individual sample to W&B
+    '''
+    if sample.dim() == 0:
+        samples_dict = {wandb_name+'; epoch': i, wandb_name: sample}
+    else:
+        samples_dict = {wandb_name+'; epoch': i}
+        for i, element in enumerate(sample):
+            samples_dict[wandb_name+'; '+str(i)] = element
+    wandb.log(samples_dict)
+
+
 def wandb_plots_homework3(samples, program):
 
     # W&B logging of actual plots
