@@ -55,8 +55,8 @@ def evaluate_program(ast, sigma, verbose=False):
         # Add the new function to the environment
         eval_env.add(to_eval[0][1], user_func)
 
-    result, sigma_new, _ = interpret(to_eval[-1], sigma, eval_env)
-    return result, sigma_new
+    result, sig, _ = interpret(to_eval[-1], sigma, eval_env)
+    return result, sig
 
 
 def interpret(ast, sigma, env):
@@ -71,9 +71,14 @@ def interpret(ast, sigma, env):
         return interpret(ast[2], sig, e)
 
     # Case where we are obtaining a sample from a distribution
-    elif ast[0] == 'sample' or ast[0] == 'sample*':
+    elif ast[0] == 'sample':
         dist, sig, e = interpret(ast[1], sigma, env)
-        return dist.sample(), sig, e
+        return dist.sample().float(), sig, e
+
+    elif ast[0] == 'sample*':
+        dist, sig, e = interpret(ast[1], sigma, env)
+        sig['logw'] += dist.log_prob(env.retrieve('*sample_val*'))
+        return env.retrieve('*sample_val*'), sig, e
 
     # Case where we are observing a random variable
     elif ast[0] == 'observe' or ast[0] == 'observe*':

@@ -8,7 +8,7 @@ import hydra
 # Project imports
 from daphne import load_program
 from tests import is_tol, run_probabilistic_test, load_truth
-from general_sampling import importance_sampling
+from general_sampling import importance_sampling, mh_in_gibbs
 from evaluation_based_sampling import abstract_syntax_tree
 from graph_based_sampling import Graph
 from utils import wandb_plots_homework3
@@ -50,18 +50,17 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
             ast_or_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
             ast_or_graph = create_class(ast_or_graph, 'graph')
             samples = mh_in_gibbs(ast_or_graph, num_samples=num_samples, wandb_name=wandb_name)
-            raise Exception('Not yet implemented!')
         else:
+            ast_or_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
             raise Exception('Not yet implemented!')
-        #samples = prior_samples(ast_or_graph, mode, num_samples, tmax=tmax, wandb_name=wandb_name, verbose=verbose)
         #np.savetxt(results_file(i), samples)
 
         # Calculate some properties of the data
-        #tensored_samples = tc.tensor(samples)
-        #print('Samples shape:', tensored_samples.shape)
-        #print('First sample:', tensored_samples[0])
-        #print('Sample mean:', tensored_samples.mean(axis=0))
-        #print('Sample standard deviation:', tensored_samples.std(axis=0))
+        #samples = tc.stack(samples).type(tc.float)
+        #print('Samples shape:', samples.shape)
+        #print('First sample:', samples[0])
+        #print('Sample mean:', samples.mean(axis=0))
+        #print('Sample standard deviation:', samples.std(axis=0))
 
         # Weights & biases plots
         if wandb_run: wandb_plots_homework3(samples, i)
