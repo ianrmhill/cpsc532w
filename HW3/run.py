@@ -8,7 +8,7 @@ import hydra
 # Project imports
 from daphne import load_program
 from tests import is_tol, run_probabilistic_test, load_truth
-from general_sampling import importance_sampling, mh_in_gibbs
+from general_sampling import importance_sampling, mh_in_gibbs, hamiltonian_montecarlo
 from evaluation_based_sampling import abstract_syntax_tree
 from graph_based_sampling import Graph
 from utils import wandb_plots_homework3
@@ -49,18 +49,23 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
         elif mode == 'MHG':
             ast_or_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
             ast_or_graph = create_class(ast_or_graph, 'graph')
-            samples = mh_in_gibbs(ast_or_graph, num_samples=num_samples, wandb_name=wandb_name)
+            samples, cols = mh_in_gibbs(ast_or_graph, num_samples=num_samples, wandb_name=wandb_name)
         else:
             ast_or_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
-            raise Exception('Not yet implemented!')
+            ast_or_graph = create_class(ast_or_graph, 'graph')
+            samples, cols = hamiltonian_montecarlo(ast_or_graph, num_samples=num_samples)
+
         #np.savetxt(results_file(i), samples)
 
         # Calculate some properties of the data
-        #samples = tc.stack(samples).type(tc.float)
-        #print('Samples shape:', samples.shape)
-        #print('First sample:', samples[0])
-        #print('Sample mean:', samples.mean(axis=0))
-        #print('Sample standard deviation:', samples.std(axis=0))
+        try:
+            samples = tc.stack(samples).type(tc.float)
+            print('Samples shape:', samples.shape)
+            print('First sample:', samples[0])
+            print('Sample mean:', samples.mean(axis=0))
+            print('Sample standard deviation:', samples.std(axis=0))
+        except Exception:
+            print('Couldn\'t convert samples to tensor form')
 
         # Weights & biases plots
         if wandb_run: wandb_plots_homework3(samples, i)

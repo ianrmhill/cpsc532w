@@ -61,4 +61,5 @@ def eval_link_prob(node, link, sample_vals):
     # This method evaluates the log probability of a variable outcome given all x and y in a model
     if node in sample_vals:
         graph_env.add('*sample_val*', sample_vals[node])
-    return interpret(link, {'logw': 0}, graph_env)[1]['logw']
+    log_p = interpret(link, {'logw': 0}, graph_env)[1]['logw']
+    return tc.tensor(log_p, requires_grad=True, dtype=tc.float)
