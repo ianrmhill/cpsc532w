@@ -14,31 +14,36 @@ def log_sample(sample, i, wandb_name):
     wandb.log(samples_dict)
 
 
-def wandb_plots_homework3(samples, program):
+def wandb_plots_homework3(samples, program, key_order=None):
 
     # W&B logging of actual plots
     wandb_log = {}
     if program == 1:
+        cols = key_order.prepend('sample') if key_order else ['sample', 'mu']
         data = [[j, sample] for j, sample in enumerate(samples)]
-        table = wandb.Table(data=data, columns=['sample', 'mu'])
+        table = wandb.Table(data=data, columns=cols)
         wandb_log['Program 1'] = wandb.plot.histogram(table, value='mu', title='Program 1; mu')
     elif program == 2:
+        cols = key_order.prepend('sample') if key_order else ['sample', 'slope', 'bias']
         data = [[j]+[part for part in sample] for j, sample in enumerate(samples)]
-        table = wandb.Table(data=data, columns=['sample', 'slope', 'bias'])
+        table = wandb.Table(data=data, columns=cols)
         wandb_log['Program 2; slope'] = wandb.plot.histogram(table, value='slope', title='Program 2; slope')
         wandb_log['Program 2; bias'] = wandb.plot.histogram(table, value='bias', title='Program 2; bias')
         wandb_log['Program 2; scatter'] = wandb.plot.scatter(table, x='slope', y='bias', title='Program 2; slope vs. bias')
     elif program == 3:
+        cols = key_order.prepend('sample') if key_order else ['sample', 'x']
         data = [[j, sample] for j, sample in enumerate(samples)]
-        table = wandb.Table(data=data, columns=['sample', 'x'])
+        table = wandb.Table(data=data, columns=cols)
         wandb_log['Program 3'] = wandb.plot.histogram(table, value='x', title='Program 3; Are the points from the same cluster?')
     elif program == 4:
+        cols = key_order.prepend('sample') if key_order else ['sample', 'x']
         data = [[j, sample] for j, sample in enumerate(samples)]
-        table = wandb.Table(data=data, columns=['sample', 'x'])
+        table = wandb.Table(data=data, columns=cols)
         wandb_log['Program 4'] = wandb.plot.histogram(table, value='x', title='Program 4; Is it raining?')
     elif program == 5:
+        cols = key_order.prepend('sample') if key_order else ['sample', 'x', 'y']
         data = [[j]+[part for part in sample] for j, sample in enumerate(samples)]
-        table = wandb.Table(data=data, columns=['sample', 'x', 'y'])
+        table = wandb.Table(data=data, columns=cols)
         wandb_log['Program 5; x'] = wandb.plot.histogram(table, value='x', title='Program 5; x')
         wandb_log['Program 5; y'] = wandb.plot.histogram(table, value='y', title='Program 5; y')
         wandb_log['Program 5; scatter'] = wandb.plot.scatter(table, x='x', y='y', title='Program 5; x vs. y')

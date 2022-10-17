@@ -13,8 +13,8 @@ compile: False
 
 # Evaluation method
 #mode: 'IS'
-#mode: 'MHG'
-mode: 'HMC'
+mode: 'MHG'
+#mode: 'HMC'
 
 # Inference
-num_samples: 1e1
+num_samples: 1e2

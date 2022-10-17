@@ -2,6 +2,7 @@
 import torch as tc
 from time import time
 import numpy as np
+import matplotlib.pyplot as plt
 
 # Project imports
 from evaluation_based_sampling import evaluate_program
@@ -47,16 +48,21 @@ def importance_sampling(ast, num_samples, wandb_name=None, verbose=False):
     samples = []
     weights = []
     for l in range(num_samples):
-        r_l, sigma_l = evaluate_program(ast, sigma)
+        r_l, sigma_l = evaluate_program(ast, sigma.copy())
         samples.append(r_l)
         weights.append(sigma_l['logw'])
     # Now that we have samples and log probabilities for those samples, we need to resample from those samples given the
     # probabilistic weights of getting those samples (using a categorical-style distribution)
     samples = np.array(samples)
     weights = np.array(weights)
-    weights = weights / -1
-    #weights = np.exp(weights)
+
+    weights = np.exp(weights)
     weights = weights / sum(weights)
+
+    #f1, p1 = plt.subplots(figsize=(8, 6))
+    #p1.scatter(samples, weights)
+    #plt.show()
+
     resampler = getattr(np.random.default_rng(), 'choice')
     return resampler(size=num_samples, a=samples, p=weights)
 
@@ -78,7 +84,7 @@ def acceptance(graph, x, x_new, x_old):
             return 0
     # Sum/diff all the log probabilities then convert to our acceptance probability
     log_a = (p_old_given_new + p_new) - (p_new_given_old + p_old)
-    return min(1, np.exp(log_a))
+    return tc.minimum(tc.tensor(1), tc.exp(log_a))
 
 
 def mh_in_gibbs(graph, num_samples, wandb_name=None, verbose=False):

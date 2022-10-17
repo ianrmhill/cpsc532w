@@ -35,6 +35,7 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
 
         # Draw samples
         t_start = time()
+        cols = None
         wandb_name = 'Program %s samples'%i if wandb_run else None
         print('Running: '+prog_set+':' ,i)
         print('Maximum samples [log10]:', np.log10(num_samples))
