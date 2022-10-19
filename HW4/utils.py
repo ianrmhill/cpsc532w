@@ -14,7 +14,7 @@ def log_sample(sample, i, wandb_name):
     wandb.log(samples_dict)
 
 
-def wandb_plots_homework3(samples, program, key_order=None):
+def wandb_plots_homework4(samples, program, key_order=None):
 
     # W&B logging of actual plots
     wandb_log = {}

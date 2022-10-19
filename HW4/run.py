@@ -7,11 +7,10 @@ import hydra
 
 # Project imports
 from daphne import load_program
-from tests import is_tol, run_probabilistic_test, load_truth
-from general_sampling import importance_sampling, mh_in_gibbs, hamiltonian_montecarlo
+from var_inf import variational_inference, sample_posterior
 from evaluation_based_sampling import abstract_syntax_tree
 from graph_based_sampling import Graph
-from utils import wandb_plots_homework3
+from utils import wandb_plots_homework4
 
 
 def create_class(ast_or_graph, mode):
@@ -42,24 +41,11 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
         print('Maximum time [s]:', tmax)
         print('Evaluation scheme:', mode)
 
-        # Switch based on inference mode
-        if mode == 'IS':
-            ast_or_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='desugar', compile=compile)
-            ast_or_graph = create_class(ast_or_graph, 'desugar')
-            samples = importance_sampling(ast_or_graph, num_samples=num_samples, wandb_name=wandb_name)
-        elif mode == 'MHG':
-            ast_or_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
-            ast_or_graph = create_class(ast_or_graph, 'graph')
-            samples, cols = mh_in_gibbs(ast_or_graph, num_samples=num_samples, wandb_name=wandb_name, program=i)
-        else:
-            # HMC cannot run on programs 3 and 4
-            if 3 in programs: programs.remove(3)
-            if 4 in programs: programs.remove(4)
-            ast_or_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
-            ast_or_graph = create_class(ast_or_graph, 'graph')
-            samples, cols = hamiltonian_montecarlo(ast_or_graph, num_samples=num_samples, wandb_name=wandb_name)
-
-        #np.savetxt(results_file(i), samples)
+        # Load the program, perform VI, then draw posterior samples
+        program_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='desugar', compile=compile)
+        program_graph = create_class(program_graph, 'graph')
+        posterior = variational_inference(program_graph, wandb_name=wandb_name)
+        samples = sample_posterior(posterior, num_samples)
 
         # Calculate some properties of the data
         try:
@@ -71,7 +57,7 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
             print('Couldn\'t convert samples to tensor form')
 
         # Weights & biases plots
-        if wandb_run: wandb_plots_homework3(samples, i, cols)
+        if wandb_run: wandb_plots_homework4(samples, i, cols)
 
         # Finish
         t_finish = time()
