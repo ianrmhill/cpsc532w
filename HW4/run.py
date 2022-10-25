@@ -7,7 +7,7 @@ import hydra
 
 # Project imports
 from daphne import load_program
-from var_inf import variational_inference, sample_posterior
+from var_inf import Guide, variational_inference, sample_posterior
 from evaluation_based_sampling import abstract_syntax_tree
 from graph_based_sampling import Graph
 from utils import wandb_plots_homework4
@@ -35,29 +35,34 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
         # Draw samples
         t_start = time()
         cols = None
-        wandb_name = 'Program %s samples'%i if wandb_run else None
+        wandb_name = 'Program %s' % i
         print('Running: '+prog_set+':' ,i)
-        print('Maximum samples [log10]:', np.log10(num_samples))
+        print('Maximum posterior samples [log10]:', np.log10(num_samples))
         print('Maximum time [s]:', tmax)
         print('Evaluation scheme:', mode)
 
         # Load the program, perform VI, then draw posterior samples
-        program_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='desugar', compile=compile)
+        program_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
         program_graph = create_class(program_graph, 'graph')
-        posterior = variational_inference(program_graph, wandb_name=wandb_name)
-        samples = sample_posterior(posterior, num_samples)
+        guide = Guide(program_graph, wandb_name)
+        trained_guide = variational_inference(program_graph, guide, wandb_name, wandb_run)
+        samples = trained_guide.sample(num_samples)
+
+        # For Program 2 have to add some posterior predictive samples
+        if wandb_name == 'Program 2':
+            samples = tc.cat((samples, sample_posterior(guide, num_samples)))
 
         # Calculate some properties of the data
         try:
             print('Samples shape:', samples.shape)
-            print('First sample:', samples[0])
-            print('Sample mean:', samples.mean(axis=0))
-            print('Sample standard deviation:', samples.std(axis=0))
+            print('First sample:', samples.T[0])
+            print('Sample mean:', samples.T.mean(axis=0))
+            print('Sample standard deviation:', samples.T.std(axis=0))
         except Exception:
             print('Couldn\'t convert samples to tensor form')
 
         # Weights & biases plots
-        if wandb_run: wandb_plots_homework4(samples, i, cols)
+        if wandb_run: wandb_plots_homework4(samples.T, i)
 
         # Finish
         t_finish = time()
@@ -78,12 +83,12 @@ def run_all(cfg):
     daphne_dir = cfg['daphne_dir']
 
     # Initialize W&B
-    if wandb_run: wandb.init(project='HW3-'+mode, entity='cs532-2022',
+    if wandb_run: wandb.init(project='HW4', entity='cs532-2022',
                              settings=wandb.Settings(program_relpath="run.py", disable_git=True, disable_code=True))
 
     # Programs
-    programs = cfg['HW3_programs']
-    run_programs(programs, mode=mode, prog_set='HW3', base_dir=base_dir, daphne_dir=daphne_dir, num_samples=num_samples,
+    programs = cfg['HW4_programs']
+    run_programs(programs, mode=mode, prog_set='HW4', base_dir=base_dir, daphne_dir=daphne_dir, num_samples=num_samples,
         compile=compile, wandb_run=wandb_run, verbose=False)
 
     # Finalize W&B

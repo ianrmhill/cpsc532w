@@ -64,6 +64,7 @@ primitives = {
     'sqrt': tc.sqrt,
     '*': tc.mul,
     '/': tc.div,
+    'abs': tc.abs,
 
     # Containers
     'vector': vector,
