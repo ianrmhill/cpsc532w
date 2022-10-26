@@ -50,6 +50,10 @@ def evaluate_graph(graph: Graph, verbose=False):
     return interpret(graph.json[2], 0, graph_env)
 
 
+def eval_graph_given_samples(graph: Graph, sample_vals):
+    pass
+
+
 def sample_prior_val(link, sample_vals):
     graph_env = YummyEnv(primitives | sample_vals)
     link[0] = 'sample'
@@ -65,11 +69,17 @@ def eval_link_prob(node, link, sample_vals):
     return log_p # Returning a new tensor was what was causing the autograd failure!!! Baffling
 
 
-def eval_graph_prob(nodes, links, order, vals):
+def eval_graph_prob(nodes, links, order, vals, hardfix=None):
     prob = tc.tensor(0, dtype=tc.float)
     env_vals = {}
+    offset = 0
     for i, node in enumerate(order):
-        env_vals[node] = vals[i]
+        ia = i + offset
+        if node in hardfix:
+            env_vals[node] = vals[ia:ia+3]
+            offset += 2
+        else:
+            env_vals[node] = vals[ia]
     for node in nodes:
         prob += eval_link_prob(node, links[node], env_vals)
     return prob

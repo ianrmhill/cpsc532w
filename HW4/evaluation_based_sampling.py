@@ -77,7 +77,13 @@ def interpret(ast, sigma, env, mode: str = 's'):
             return dist.sample().float(), sig, e
         else:
             dist, sig, e = interpret(ast[1], sigma, env, mode)
-            sig['logw'] += dist.log_prob(env.retrieve('*sample_val*'))
+            try:
+                sig['logw'] += dist.log_prob(env.retrieve('*sample_val*'))
+            except ValueError:
+                # This case used for VI with annoying variational support issues. If the sample value is outside the PDF
+                # support the probability is 0, and so we just return a super small value to approximate 0
+                # Used for Q5
+                sig['logw'] += -300
             return env.retrieve('*sample_val*'), sig, e
 
     # Case where we are observing a random variable

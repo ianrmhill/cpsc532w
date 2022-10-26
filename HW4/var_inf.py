@@ -7,10 +7,9 @@ from graph_based_sampling import eval_graph_prob
 
 class Guide:
     def __init__(self, graph, prog_name):
-        #q = None
-        #for node in graph.sorted:
         # Hard coded guides seems lazy, but actually makes sense since the probabilistic programmer wants control over
         # the form of the guide and such. I'm the one that's lazy.
+        self.multi_out = False
         match prog_name:
             case 'Program 1':
                 self.dists = {'sample2': dist.Normal(tc.tensor(1.), tc.sqrt(tc.tensor(5.)))}
@@ -20,27 +19,46 @@ class Guide:
             case 'Program 3':
                 self.dists = {f"sample{i}": dist.Normal(tc.tensor(0.), tc.tensor(10.)) for i in range(0, 5, 2)}
                 self.dists = self.dists | {f"sample{i}": dist.Gamma(tc.tensor(1.), tc.tensor(1.)) for i in range(1, 6, 2)}
-                self.dists['sample6'] = dist.Dirichlet([tc.tensor(1.), tc.tensor(1.), tc.tensor(1.)])
+                self.dists['sample6'] = dist.Dirichlet(tc.tensor([1., 1., 1.]))
+                self.dists = self.dists | {f"sample{i}": dist.Categorical(tc.tensor([0.3, 0.3, 0.4])) for i in range(7, 20, 2)}
+                # Dirichlet outputs 3 values so gotta handle things differently
+                self.multi_out = True
             case 'Program 4':
                 self.dists = {f"sample{i}": dist.Normal(tc.tensor(0.), tc.tensor(1.)) for i in range(142)}
             case 'Program 5':
-                self.dists = {'sample1': dist.Normal(tc.tensor(0.), tc.tensor(5.))}
-                self.evals = {'sample2': tc.distributions.Uniform(0.01, tc.abs('sample1'))}
+                self.dists = {'sample1': dist.Normal(tc.tensor(0.), tc.tensor(5.)),
+                              'sample2': dist.Gamma(tc.tensor(1.4), tc.tensor(2.))}
             case _:
                 raise Exception()
-        self.node_order = [node for node in self.dists] + [node for node in self.evals]
+        self.node_order = [node for node in self.dists]
         self.num_nodes = len(self.node_order)
 
     def sample(self, num_samples):
-        samples = tc.zeros((self.num_nodes, num_samples))
+        if self.multi_out:
+            samples = tc.zeros((self.num_nodes + 2, num_samples))
+        else:
+            samples = tc.zeros((self.num_nodes, num_samples))
+        offset = 0
         for i, node in enumerate(self.node_order):
-            samples[i] = self.dists[node].sample(sample_shape=(num_samples,))
+            ia = i + offset
+            if type(self.dists[node]) == dist.Dirichlet:
+                samples[ia:ia+3] = self.dists[node].sample(sample_shape=(num_samples,)).T
+                offset += 2
+            else:
+                samples[ia] = self.dists[node].sample(sample_shape=(num_samples,))
         return samples
 
     def log_prob(self, samples, num_samples):
         logps = tc.zeros((num_samples,))
+        offset = 0
         for i, node in enumerate(self.dists):
-            logps += self.dists[node].log_prob(samples[i])
+            ia = i + offset
+            if type(self.dists[node]) == dist.Dirichlet:
+                shape = samples[ia:ia+3]
+                logps += self.dists[node].log_prob(samples[ia:ia+3].T)
+                offset += 2
+            else:
+                logps += self.dists[node].log_prob(samples[ia])
         return logps
 
     def optim_prms(self):
@@ -69,10 +87,12 @@ def variational_inference(p_graph, guide, wandb_name, wandb_run):
         # Get the probability of full set of sampled values and observations from posterior
         graph_logp = tc.zeros((samples_per_epoch,))
         for s in range(samples_per_epoch):
-            graph_logp[s] = eval_graph_prob(p_graph.sorted, p_graph.links, guide.node_order, z[:, s])
+            tofix = []
+            if wandb_name == 'Program 3': tofix.append('sample6')
+            graph_logp[s] = eval_graph_prob(p_graph.sorted, p_graph.links, guide.node_order, z[:, s], hardfix=tofix)
 
         # Calculate gradient of probability expression w.r.t variational parameters
-            # Must mean across the right dimension, one dim is parameters, the other is samples
+        # Must mean across the right dimension, one dim is parameters, the other is samples
         is_this_loss = rho * (sample_logp * (graph_logp - sample_logp).detach()).mean()
         is_this_loss.backward()
 
