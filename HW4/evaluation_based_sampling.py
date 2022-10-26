@@ -88,10 +88,14 @@ def interpret(ast, sigma, env, mode: str = 's'):
 
     # Case where we are observing a random variable
     elif ast[0] == 'observe' or ast[0] == 'observe*':
-        dist, sig1, e1 = interpret(ast[1], sigma, env, mode)
-        obs, sig2, e2 = interpret(ast[2], sig1, e1, mode)
-        sig2['logw'] = sig2['logw'] + dist.log_prob(obs)
-        return obs, sig2, e2
+        if mode == 's':
+            dist, sig, e = interpret(ast[1], sigma, env, mode)
+            return dist.sample().float(), sig, e
+        else:
+            dist, sig1, e1 = interpret(ast[1], sigma, env, mode)
+            obs, sig2, e2 = interpret(ast[2], sig1, e1, mode)
+            sig2['logw'] = sig2['logw'] + dist.log_prob(obs)
+            return obs, sig2, e2
 
     # Case 'if' where expression is the ternary
     elif ast[0] == 'if':

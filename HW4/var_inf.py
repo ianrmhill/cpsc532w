@@ -2,7 +2,7 @@ import torch as tc
 
 import distributions as dist
 import utils
-from graph_based_sampling import eval_graph_prob
+from graph_based_sampling import eval_graph_prob, eval_graph_given_samples
 
 
 class Guide:
@@ -104,17 +104,19 @@ def variational_inference(p_graph, guide, wandb_name, wandb_run):
         # Log stats and increment our epoch
         if wandb_run:
             utils.log_loss(is_this_loss, i, wandb_name)
-            utils.log_params(guide.dists, i, wandb_name)
+            if wandb_name in ['Program 1', 'Program 2', 'Program 5']:
+                utils.log_params(guide.dists, i, wandb_name)
         i += 1
 
     # Return the trained guide, I've made it mutable
     return guide
 
 
-def sample_posterior(posterior_guide, num_samples):
-    """Note that this is only used for Program 2 for some reason, so I just made it specific instead of general."""
+def sample_posterior(graph, posterior_guide, num_samples, wandb_name):
     samples = posterior_guide.sample(num_samples)
-    predictive = tc.zeros((1, num_samples))
+    hardfix = []
+    if wandb_name == 'Program 3': hardfix.append('sample6')
+    outputs = []
     for i in range(num_samples):
-        predictive[0][i] = (samples[0][i] * 0) + samples[1][i]
-    return predictive
+        outputs.append(eval_graph_given_samples(graph, posterior_guide.node_order, samples[:, i], hardfix))
+    return tc.stack(outputs)

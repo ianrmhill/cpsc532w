@@ -20,8 +20,18 @@ def hashmap(*x):
 
 def getindex(x, i):
     if type(i) == tc.Tensor:
-        i = int(i.item())
-    return x[i]
+        if i.dim() == 0:
+            inds = [int(i.item())]
+        else:
+            inds = []
+            for j in range(i.size(dim=0)):
+                inds.append(int(i[j].item()))
+    out = []
+    for j in inds:
+        out.append(x[j])
+    if len(out) == 1:
+        out = out[0]
+    return out
 
 
 def putindex(x, i, v):

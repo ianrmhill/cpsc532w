@@ -41,17 +41,33 @@ class Graph:
         self.edges = graph_json[1]['A']
         self.links = graph_json[1]['P']
         self.observe = graph_json[1]['Y']
+        self.output_expression = graph_json[2]
 
 
-def evaluate_graph(graph: Graph, verbose=False):
-    graph_env = YummyEnv(primitives)
+def evaluate_graph(graph: Graph, env=None, verbose=False):
+    if not env:
+        env = YummyEnv(primitives)
+        for node in graph.sorted:
+            env.add(node, interpret(graph.links[node], 0, env)[0])
+    return interpret(graph.json[2], 0, env)
+
+
+def eval_graph_given_samples(graph: Graph, order, sample_vals, hardfix):
+    env = YummyEnv(primitives)
+    offset = 0
+    for i, node in enumerate(order):
+        ia = i + offset
+        if node in hardfix:
+            env.add(node, sample_vals[ia:ia + 3])
+            offset += 2
+        else:
+            env.add(node, sample_vals[ia])
     for node in graph.sorted:
-        graph_env.add(node, interpret(graph.links[node], 0, graph_env)[0])
-    return interpret(graph.json[2], 0, graph_env)
-
-
-def eval_graph_given_samples(graph: Graph, sample_vals):
-    pass
+        if 'sample' in node:
+            continue
+        elif 'observe' in node:
+            env.add(node, interpret(graph.links[node], {'logw': 0}, env)[0])
+    return interpret(graph.output_expression, {'logw': 0}, env)[0]
 
 
 def sample_prior_val(link, sample_vals):

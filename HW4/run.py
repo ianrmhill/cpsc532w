@@ -47,10 +47,7 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
         guide = Guide(program_graph, wandb_name)
         trained_guide = variational_inference(program_graph, guide, wandb_name, wandb_run)
         samples = trained_guide.sample(num_samples)
-
-        # For Program 2 have to add some posterior predictive samples
-        if wandb_name == 'Program 2':
-            samples = tc.cat((samples, sample_posterior(guide, num_samples)))
+        outputs = sample_posterior(program_graph, trained_guide, num_samples, wandb_name)
 
         # Calculate some properties of the data
         try:
@@ -62,7 +59,7 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
             print('Couldn\'t convert samples to tensor form')
 
         # Weights & biases plots
-        if wandb_run: wandb_plots_homework4(samples.T, i)
+        if wandb_run: wandb_plots_homework4(outputs, i)
 
         # Finish
         t_finish = time()
