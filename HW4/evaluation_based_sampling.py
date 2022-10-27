@@ -83,7 +83,7 @@ def interpret(ast, sigma, env, mode: str = 's'):
                 # This case used for VI with annoying variational support issues. If the sample value is outside the PDF
                 # support the probability is 0, and so we just return a super small value to approximate 0
                 # Used for Q5
-                sig['logw'] += -300
+                sig['logw'] += -30
             return env.retrieve('*sample_val*'), sig, e
 
     # Case where we are observing a random variable
@@ -127,7 +127,12 @@ def interpret(ast, sigma, env, mode: str = 's'):
             # If a primitive operation, no observe statements are possible so sigma won't be modified
             if ast[0] in primitives:
                 op = env.retrieve(ast[0])
-                return op(*args), sig, e
+                try:
+                    return op(*args), sig, e
+                except ValueError:
+                    # This is just for Program 5 uniform distribution thing
+                    return op(0.01, 0.010001), sig, e
+
             # User defined functions may result in side effects via 'observe' statements
             else:
                 op = env.retrieve(ast[0])

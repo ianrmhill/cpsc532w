@@ -54,11 +54,14 @@ class Guide:
         for i, node in enumerate(self.dists):
             ia = i + offset
             if type(self.dists[node]) == dist.Dirichlet:
-                shape = samples[ia:ia+3]
                 logps += self.dists[node].log_prob(samples[ia:ia+3].T)
                 offset += 2
             else:
-                logps += self.dists[node].log_prob(samples[ia])
+                try:
+                    logps += self.dists[node].log_prob(samples[ia])
+                except ValueError:
+                    # Add awful log prob if we go out of the distribution support
+                    logps += -100
         return logps
 
     def optim_prms(self):
@@ -68,10 +71,8 @@ class Guide:
         return prms
 
 
-def variational_inference(p_graph, guide, wandb_name, wandb_run):
+def variational_inference(p_graph, guide, wandb_name, wandb_run, num_epochs=10, samples_per_epoch=10):
     # Initialize things
-    num_epochs = 10
-    samples_per_epoch = 10
     lr = 0.1
     rho = -1
     learner = tc.optim.Adam(guide.optim_prms(), lr=lr)
@@ -119,4 +120,8 @@ def sample_posterior(graph, posterior_guide, num_samples, wandb_name):
     outputs = []
     for i in range(num_samples):
         outputs.append(eval_graph_given_samples(graph, posterior_guide.node_order, samples[:, i], hardfix))
+    if wandb_name == 'Program 4':
+        for i in range(len(outputs)):
+            outputs[i][2] = tc.reshape(outputs[i][2], (100, 1))
+            outputs[i] = tc.cat((outputs[i][0], outputs[i][1], outputs[i][2], outputs[i][3], outputs[i][4]), dim=0)
     return tc.stack(outputs)

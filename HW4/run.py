@@ -30,6 +30,10 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
     json_prog = lambda i: prog_dir+'%d_%s.json'%(i, mode)
     results_file = lambda i: 'data/%s/%d_%s.dat'%(prog_set, i, mode)
 
+    # Hyper-parameters
+    num_epochs = [300, 300, 1000, 300, 1000]
+    samples_per_epoch = [200, 200, 50, 30, 50]
+
     for i in programs:
 
         # Draw samples
@@ -41,11 +45,14 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
         print('Maximum time [s]:', tmax)
         print('Evaluation scheme:', mode)
 
+        epochs = num_epochs[i-1]
+        epoch_samples = samples_per_epoch[i-1]
+
         # Load the program, perform VI, then draw posterior samples
         program_graph = load_program(daphne_dir, daphne_prog(i), json_prog(i), mode='graph', compile=compile)
         program_graph = create_class(program_graph, 'graph')
         guide = Guide(program_graph, wandb_name)
-        trained_guide = variational_inference(program_graph, guide, wandb_name, wandb_run)
+        trained_guide = variational_inference(program_graph, guide, wandb_name, wandb_run, epochs, epoch_samples)
         samples = trained_guide.sample(num_samples)
         outputs = sample_posterior(program_graph, trained_guide, num_samples, wandb_name)
 
