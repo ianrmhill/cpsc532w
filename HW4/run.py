@@ -31,7 +31,7 @@ def run_programs(programs, mode, prog_set, base_dir, daphne_dir, num_samples=int
     results_file = lambda i: 'data/%s/%d_%s.dat'%(prog_set, i, mode)
 
     # Hyper-parameters
-    num_epochs = [300, 300, 1000, 300, 1000]
+    num_epochs = [500, 500, 1000, 200, 1000]
     samples_per_epoch = [200, 200, 50, 30, 50]
 
     for i in programs:

@@ -1,5 +1,5 @@
 # Weights and biases
-wandb_run: True
+wandb_run: False
 
 # Directory structure
 base_dir: 'C:\Users\Ian Hill\PycharmProjects\CPSC532W\cpsc532w\HW2' # NOTE: This path should be relative to the daphne path!
