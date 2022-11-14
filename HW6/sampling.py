@@ -107,7 +107,7 @@ def get_SMC_samples(ast:dict, num_samples:int, wandb_name=None, verbose=False):
                 # We've hit an observe
                 # First update all the run states based on the returned data from the observe statement
                 for run in run_stops:
-                    run_states[run[1]] = m(id=run[1], log_w=run[3], cont=run[4], args=run[5])
+                    run_states[run[1]] = m(id=run[1], log_w=0, cont=run[4], args=run[5])
                 # Now perform resampling
                 for run in run_stops:
                     samples.append(run[1]) # These are the parallel run ID's!
