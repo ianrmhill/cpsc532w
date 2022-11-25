@@ -1,5 +1,5 @@
 # Weights and biases
-wandb_run: True
+wandb_run: False
 
 # Random seed
 seed: None
@@ -30,5 +30,5 @@ inference: SMC
 compile: False
 
 # Inference stuff
-num_samples: 1e3
-tmax: 600 # Seconds
+num_samples: 1e4
+tmax: 6000 # Seconds
