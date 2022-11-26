@@ -1,8 +1,9 @@
 """Entry point for the BOED-based analog circuit debug tool."""
 
+import numpy as np
 import torch as tc
 import pyro
-from pyro.contrib.oed.eig import marginal_eig
+from pyro.contrib.oed.eig import marginal_eig, nmc_eig
 from pyro.optim import Adam
 import matplotlib.pyplot as plt
 
@@ -18,34 +19,23 @@ class CUT:
         self.n5_f = n5
 
     def run(self, i1, i2, i3):
-        n1 = self.n1_f if self.n1_f else i1
-        n2 = self.n2_f if self.n2_f else i2
-        n3 = self.n3_f if self.n3_f else i3
-        n4 = self.n4_f if self.n4_f else int(n1 or n2)
-        n5 = self.n5_f if self.n5_f else int(n4 and n3)
+        n1 = self.n1_f if self.n1_f is not None else i1
+        n2 = self.n2_f if self.n2_f is not None else i2
+        n3 = self.n3_f if self.n3_f is not None else i3
+        n4 = self.n4_f if self.n4_f is not None else int(n1 or n2)
+        n5 = self.n5_f if self.n5_f is not None else int(n4 and n3)
         return n5
 
 
 def eval_test_eigs(mdl, designs, viz_results: bool = False):
     # Now for a BOED phase
-
-    pyro.clear_param_store()
-    num_steps, start_lr, end_lr = 1000, 0.1, 0.001
-    optimizer = pyro.optim.ExponentialLR({'optimizer': tc.optim.Adam,
-                                          'optim_args': {'lr': start_lr},
-                                          'gamma': (end_lr / start_lr) ** (1 / num_steps)})
-
-    eig = marginal_eig(
+    eig = nmc_eig(
         mdl,
         designs,       # design, or in this case, tensor of possible designs
         ['O'],                  # site label of observations, could be a list
         ['N1-F', 'N2-F', 'N3-F', 'N4-F', 'N5-F'],      # site label of 'targets' (latent variables), could also be list
-        num_samples=100,         # number of samples to draw per step in the expectation
-        num_steps=num_steps,     # number of gradient steps
-        guide=dig_boed_guide,        # guide q(y)
-        optim=optimizer,         # optimizer with learning rate decay
-        final_num_samples=1000   # at the last step, we draw more samples
-        )
+        N=10000,         # number of samples to draw per step in the expectation
+        M=100)     # number of gradient steps
 
     if viz_results:
         plt.figure(figsize=(10,5))
@@ -61,17 +51,25 @@ def amortized_dig_debug():
     test_circuit = CUT(None, None, None, None, None)
     candidate_designs = tc.tensor([[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1],
                                    [1, 0, 0], [1, 0, 1], [1, 1, 0], [1, 1, 1]], dtype=tc.float)
+    for test in candidate_designs:
+        print(f"When input = {test}, output = {test_circuit.run(*test)}")
+    # Construct our initial beliefs about possible circuit faults
     fault_priors = tc.tensor([0.8, 0.1, 0.1])
     beliefs = fault_priors.tile((5, 1))
+    #beliefs = tc.tensor([[0.8080, 0.0920, 0.1000],
+    #                     [0.7640, 0.1090, 0.1270],
+    #                     [0.8640, 0.0000, 0.1360],
+    #                     [0.9080, 0.0000, 0.0920],
+    #                     [1., 0., 0.]])
     pyro.clear_param_store()
 
-    for test_pattern in range(3):
+    for test_pattern in range(6):
         print(f"Beginning round {test_pattern}")
         # Construct current model based on beliefs
         curr_mdl = make_mdl(beliefs)
 
         # First determine best test pattern to apply
-        best = int(tc.argmax(eval_test_eigs(curr_mdl, candidate_designs)).float().detach())
+        best = int(tc.argmax(eval_test_eigs(curr_mdl, candidate_designs, True)).float().detach())
 
         # Apply the test pattern to the actual circuit
         print(f"Applying test pattern {candidate_designs[best, :]}")
@@ -80,20 +78,21 @@ def amortized_dig_debug():
 
         # Condition the model based on the outputs
         cond_mdl = pyro.condition(curr_mdl, {'O': tc.tensor(out)})
-        svi = pyro.infer.SVI(cond_mdl,
-                             dig_guide,
-                             Adam({"lr": .05}),
-                             loss=pyro.infer.Trace_ELBO(),
-                             num_samples=100)
-        num_iters = 2000
-        for i in range(num_iters):
-            elbo = svi.step(candidate_designs[best, :])
+
+        sampler = pyro.infer.Importance(cond_mdl, num_samples=1000)
+        results = sampler.run(candidate_designs[best, :])
+        normed_w = sampler.get_normalized_weights()
+        resamples = tc.distributions.Categorical(normed_w).sample((1000,))
+        sampled_vals = {}
+        sampled_vals['N1-F'] = [results.exec_traces[s].nodes['N1-F']['value'] for s in resamples]
+        sampled_vals['N2-F'] = [results.exec_traces[s].nodes['N2-F']['value'] for s in resamples]
 
         # Update the current model based on the posterior
         for i in range(5):
-            beliefs[i, 0] = pyro.param(f"n{i}c").detach().clone()
-            beliefs[i, 1] = pyro.param(f"n{i}0").detach().clone()
-            beliefs[i, 2] = pyro.param(f"n{i}1").detach().clone()
+            sampled_vals = np.array([results.exec_traces[s].nodes[f"N{i+1}-F"]['value'] for s in resamples])
+            beliefs[i, 0] = np.count_nonzero(sampled_vals == 0) / sampled_vals.size
+            beliefs[i, 1] = np.count_nonzero(sampled_vals == 1) / sampled_vals.size
+            beliefs[i, 2] = np.count_nonzero(sampled_vals == 2) / sampled_vals.size
             print(f"Round {test_pattern} updated beliefs for N{i+1}: {beliefs[i, :]}")
 
 

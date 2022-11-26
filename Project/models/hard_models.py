@@ -94,12 +94,12 @@ def make_mdl(beliefs):
             n5_f = pyro.sample('N5-F', dist.Categorical(beliefs[4, :]))
 
             # Now define the true values for each node
-            n1 = get_fault_val(n1_f, design[:, :, 0])
-            n2 = get_fault_val(n2_f, design[:, :, 1])
-            n3 = get_fault_val(n3_f, design[:, :, 2])
+            n1 = get_fault_val(n1_f, design[..., 0])
+            n2 = get_fault_val(n2_f, design[..., 1])
+            n3 = get_fault_val(n3_f, design[..., 2])
             n4 = get_fault_val(n4_f, tc.logical_or(n1, n2, out=tc.empty(n1.shape, dtype=tc.float)))
             n5 = get_fault_val(n5_f, tc.logical_and(n4, n3, out=tc.empty(n4.shape, dtype=tc.float)))
-            return pyro.sample('O', dist.Normal(n5, 0.01))
+            return pyro.sample('O', dist.Normal(n5, 0.001))
     return simple_dig_faults
 
 
