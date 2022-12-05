@@ -74,6 +74,7 @@ def riddle_solve():
     candidate_designs = tc.tensor(list(product([0, 1, 2], repeat=8)), dtype=tc.float)
     # Initially the heavier ball is equally likely to be any of the eight balls
     ball_priors = tc.tensor([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125])
+    print(f"Prior probabilities for index of heavier ball: {ball_priors[:]}")
     pyro.clear_param_store()
 
     for test in range(2):
