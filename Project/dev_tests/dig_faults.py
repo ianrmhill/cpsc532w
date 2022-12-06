@@ -7,7 +7,7 @@ from pyro.contrib.oed.eig import marginal_eig, nmc_eig
 from pyro.optim import Adam
 import matplotlib.pyplot as plt
 
-from models.hard_models import dig_boed_guide, dig_guide, make_mdl
+from hard_models import dig_boed_guide, dig_guide, make_mdl
 
 
 class CUT:
