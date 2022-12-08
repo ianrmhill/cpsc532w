@@ -62,6 +62,16 @@ class FaultyCircuit:
                 if comp_type == 'res':
                     nodes.append(CircuitNode(comp_name + '.1', comp_name, comp_type, ordered, conns))
                     nodes.append(CircuitNode(comp_name + '.2', comp_name, comp_type, ordered, conns))
+                elif comp_type == 'opamp5':
+                    nodes.append(CircuitNode(comp_name + '.-', comp_name, comp_type, ordered, conns))
+                    nodes.append(CircuitNode(comp_name + '.+', comp_name, comp_type, ordered, conns))
+                    nodes.append(CircuitNode(comp_name + '.o', comp_name, comp_type, ordered, conns))
+                    nodes.append(CircuitNode(comp_name + '.vcc', comp_name, comp_type, ordered, conns))
+                    nodes.append(CircuitNode(comp_name + '.vee', comp_name, comp_type, ordered, conns))
+                elif comp_type == 'opamp3':
+                    nodes.append(CircuitNode(comp_name + '.-', comp_name, comp_type, ordered, conns))
+                    nodes.append(CircuitNode(comp_name + '.+', comp_name, comp_type, ordered, conns))
+                    nodes.append(CircuitNode(comp_name + '.o', comp_name, comp_type, ordered, conns))
                 else:
                     nodes.append(CircuitNode(comp_name, comp_name, comp_type, ordered, conns))
         return nodes
@@ -88,7 +98,7 @@ class FaultyCircuit:
     def get_latent_lbls(self):
         ltnt_lbls = []
         for prm in self.comp_prms:
-            ltnt_lbls.append(f"{prm}-r")
+            ltnt_lbls.append(prm)
         for node1 in self.nodes:
             for node2 in self.nodes:
                 edge_name = str(sorted(tuple({node1.name, node2.name})))
@@ -104,7 +114,10 @@ class FaultyCircuit:
                     edges.append({node1.name, node2.name})
         return edges
 
-    def simulate_test(self, v_ins):
+    def kcl_solver(self, v_ins, forced_nodes=None):
+        # Default to no enforced node voltage overrides
+        if not forced_nodes:
+            forced_nodes = {}
         # For our KCL equations we will always accumulate all terms on one side of the equality, thus B is a 0 vector
         # except for at fixed input voltage nodes
         b = tc.zeros(len(self.nodes))
@@ -113,22 +126,55 @@ class FaultyCircuit:
             if node.type == 'v_in':
                 b[i] = v_ins[j]
                 j += 1
+            elif node.name in forced_nodes:
+                b[i] = forced_nodes[node.name]
         # Check that the supplied number of input voltages was correct
         if len(v_ins) != j:
             raise Exception(f"Incorrect number of input voltages provided. Provided: {len(v_ins)}. Needed: {j}")
 
         # Build up set of KCL equations for all the terminal nodes
         a_list = []
-        for node in self.nodes:
-            if node.type == 'res':
-                prms = self.comp_prms[node.parent_comp]
+        for i, node in enumerate(self.nodes):
+            # First check that the node voltage isn't being forced to override
+            if node.type == 'v_in' or node.name in forced_nodes:
+                eqn = tc.zeros(len(self.nodes), dtype=tc.float)
+                eqn[i] = 1
+                a_list.append(eqn)
             else:
-                prms = None
-            a_list.append(node.get_kcl_eqn('sim', prms))
+                if node.type == 'res':
+                    prms = self.comp_prms[f"{node.parent_comp}-r"]
+                elif node.type == 'opamp3' or node.type == 'opamp5':
+                    prms = [self.comp_prms[f"{node.parent_comp}-g"],
+                            self.comp_prms[f"{node.parent_comp}-ri"], self.comp_prms[f"{node.parent_comp}-ro"]]
+                else:
+                    prms = None
+                a_list.append(node.get_kcl_eqn('sim', prms))
         a = tc.stack(a_list)
 
-        # Now solve the system of equations and return the output voltages
+        # Now solve the system of equations
         v = tc.linalg.solve(a, b)
+        return v
+
+    def simulate_test(self, v_ins):
+        # Solve the linear circuit given the voltage inputs
+        v = self.kcl_solver(v_ins)
+
+        # Non-linear circuit effect handling!!! For now just handling op amp power rail saturation
+        for i, node in enumerate(self.nodes):
+            if node.type == 'opamp5' and '.o' in node.name:
+                v_min, v_max = None, None
+                for j, node2 in enumerate(self.nodes):
+                    if node2.parent_comp == node.parent_comp:
+                        if '.vcc' in node2.name:
+                            v_max = v[j]
+                        elif '.vee' in node2.name:
+                            v_min = v[j]
+                if v_min is not None and v[i] < v_min:
+                    v = self.kcl_solver(v_ins, {node.name: v_min})
+                elif v_max is not None and v[i] > v_max:
+                    v = self.kcl_solver(v_ins, {node.name: v_max})
+
+        # Finally, return the observed output voltages
         out_list = []
         for i, node in enumerate(self.nodes):
             if node.type == 'v_out':
@@ -142,15 +188,6 @@ class FaultyCircuit:
 
         def fault_mdl(test_ins):
             with pyro.plate_stack('iso-plate', test_ins.shape[:-1]):
-                # Setup fixed voltage vector
-                b = tc.zeros((*test_ins.shape[:-1], len(self.nodes)))
-                j = 0
-                # Masking may be the best solution here, just pre-gen the masks for different node types
-                for i, node in enumerate(self.nodes):
-                    if node.type == 'v_in':
-                        b[..., i] = test_ins[..., j]
-                        j += 1
-
                 # Sample all our latent parameters
                 prms = {}
                 for comp in self.comp_prms:
@@ -160,6 +197,14 @@ class FaultyCircuit:
                     edge_name = str(sorted(tuple(edge)))
                     shorts[edge_name] = pyro.sample(
                         f"{edge_name}-r", dist.Categorical(tc.tensor([beliefs[edge_name], 1 - beliefs[edge_name]])))
+
+                # Setup fixed voltage vector
+                b = tc.zeros((*test_ins.shape[:-1], len(self.nodes)))
+                j = 0
+                for i, node in enumerate(self.nodes):
+                    if node.type == 'v_in':
+                        b[..., i] = test_ins[..., j]
+                        j += 1
 
                 # Setup KCL node voltage equations
                 a_list = []
