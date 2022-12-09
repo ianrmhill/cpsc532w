@@ -83,7 +83,9 @@ def guided_debug(circuit=example_circuit, mode='simulated'):
     # With two test voltages we consider every 100mV steps and every possible combination of the two sources
     candidate_tests = tc.tensor(list(product(v_list, repeat=2)), dtype=tc.float)
     gnds = tc.zeros(121).unsqueeze(-1)
+    vccs = tc.ones(121).unsqueeze(-1)
     candidate_tests = tc.cat((candidate_tests, gnds), -1)
+    candidate_tests = tc.cat((candidate_tests, vccs), -1)
 
     # Define the initial fault model and the graphical nodes that we will be conditioning and observing
     curr_mdl = circuit.gen_fault_mdl()

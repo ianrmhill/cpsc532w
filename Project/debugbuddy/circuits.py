@@ -181,6 +181,42 @@ class FaultyCircuit:
                 out_list.append(v[i])
         return tc.tensor(out_list)
 
+    def inf_kcl_solver(self, v_ins, prms, shorts, forced_nodes=None):
+        # Default to no enforced node voltage overrides
+        if not forced_nodes:
+            forced_nodes = {}
+        # Setup fixed voltage vector
+        b = tc.zeros((*v_ins.shape[:-1], len(self.nodes)))
+        j = 0
+        for i, node in enumerate(self.nodes):
+            if node.type == 'v_in':
+                b[..., i] = v_ins[..., j]
+                j += 1
+            elif node.name in forced_nodes:
+                b[..., i] = forced_nodes[node.name]
+
+        # Setup KCL node voltage equations
+        a_list = []
+        for i, node in enumerate(self.nodes):
+            if node.type == 'v_in' or node.name in forced_nodes:
+                eqn = tc.zeros((*v_ins.shape[:-1], len(self.nodes)), dtype=tc.float)
+                eqn[..., i] = 1
+                a_list.append(eqn)
+            else:
+                if node.type == 'res':
+                    kcl_prms = prms[f"{node.parent_comp}-r"]
+                elif node.type == 'opamp3' or node.type == 'opamp5':
+                    kcl_prms = [prms[f"{node.parent_comp}-g"],
+                                prms[f"{node.parent_comp}-ri"], prms[f"{node.parent_comp}-ro"]]
+                else:
+                    kcl_prms = None
+                a_list.append(node.get_kcl_eqn('predict', kcl_prms, shorts, v_ins.shape[:-1]))
+        a = tc.stack(a_list, -2)
+
+        # Solve the system of equations to get the node voltages
+        v = tc.linalg.solve(a, b)
+        return v
+
     def gen_fault_mdl(self, beliefs=None):
         # If no beliefs are provided it means we are using the initial intended connections for our priors
         if not beliefs:
@@ -198,23 +234,40 @@ class FaultyCircuit:
                     shorts[edge_name] = pyro.sample(
                         f"{edge_name}-r", dist.Categorical(tc.tensor([beliefs[edge_name], 1 - beliefs[edge_name]])))
 
-                # Setup fixed voltage vector
-                b = tc.zeros((*test_ins.shape[:-1], len(self.nodes)))
-                j = 0
+                v = self.inf_kcl_solver(test_ins, prms, shorts)
+
+                # Non-linear circuit effect handling!!! For now just handling op amp power rail saturation
                 for i, node in enumerate(self.nodes):
-                    if node.type == 'v_in':
-                        b[..., i] = test_ins[..., j]
-                        j += 1
+                    if node.type == 'opamp5' and '.o' in node.name:
+                        v_min, v_max = None, None
+                        for j, node2 in enumerate(self.nodes):
+                            if node2.parent_comp == node.parent_comp:
+                                if '.vcc' in node2.name:
+                                    v_max = v[..., j]
+                                elif '.vee' in node2.name:
+                                    v_min = v[..., j]
+                        # Because the control flow logic of the KCL solver is at the batch level, have to individually
+                        # rerun cases where the op amp limits are exceeded, yikes, it's too slow
+                        if v_min is not None:
+                            batch_dims = test_ins.shape[:-1]
+                            if len(batch_dims) == 1:
+                                for n in range(batch_dims[0]):
+                                    if v[n, i] < v_min[n]:
+                                        v[n, :] = self.inf_kcl_solver(
+                                            test_ins[n, :], {prm: prms[prm][n] for prm in prms},
+                                            {edge: shorts[edge][n] for edge in shorts},
+                                            {node.name: v_min[n]})
+                            elif len(batch_dims) == 2:
+                                for n in range(batch_dims[0]):
+                                    for m in range(batch_dims[1]):
+                                        if v[n, m, i] < v_min[n, m]:
+                                            v[n, m, :] = self.inf_kcl_solver(
+                                                test_ins[n, m, :], {prm: prms[prm][n, m] for prm in prms},
+                                                {edge: shorts[edge][n, m] for edge in shorts},
+                                                {node.name: v_min[n, m]})
+                        elif v_max is not None and v[i] > v_max:
+                            v = self.inf_kcl_solver(test_ins, prms, shorts, {node.name: v_max})
 
-                # Setup KCL node voltage equations
-                a_list = []
-                for node in self.nodes:
-                    kcl_prms = prms[node.parent_comp] if node.type == 'res' else None
-                    a_list.append(node.get_kcl_eqn('predict', kcl_prms, shorts, test_ins.shape[:-1]))
-                a = tc.stack(a_list, -2)
-
-                # Solve the system of equations to get the node voltages
-                v = tc.linalg.solve(a, b)
                 # Only return the measured node voltages
                 out_list = []
                 for i, node in enumerate(self.nodes):
