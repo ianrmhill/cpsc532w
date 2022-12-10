@@ -10,13 +10,7 @@ __all__ = ['FaultyCircuit']
 
 MAX_RES = 1e6
 
-
-def prm_dist(p1, p2, p3, p4):
-    return 0.5 * dist.Beta(p1, p2).sample() + 0.5 * dist.Normal(p3, p4).sample()
-
-
-def conn_dist(p1, p2, p3, p4):
-    return 0.5 * dist.Beta(p1, p2).sample() + 0.5 * dist.Normal(p3, p4).sample()
+pu = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
 
 
 class CircuitNode:
@@ -25,10 +19,7 @@ class CircuitNode:
         self.parent_comp = comp
         self.type = type
         self.nodes = all_nodes
-        self.conns = []
-        for conn in connections:
-            if name in conn:
-                self.conns.append(conn)
+        self.conns = connections
 
     def get_kcl_eqn(self, mode='sim', comp_prms=None, edge_states=None, batch_shape=None):
         if mode == 'sim':
@@ -79,13 +70,13 @@ class FaultyCircuit:
     def _construct_priors(self, expected_conns, prms):
         priors = {}
         for prm in prms:
-            priors[prm] = [prms[prm], prms[prm] * 0.05]
+            priors[prm] = tc.tensor([prms[prm], prms[prm] * 0.05], device=pu)
         for edge in self.edges:
             edge_name = str(sorted(tuple(edge)))
             if edge in expected_conns:
-                priors[edge_name] = 0.9
+                priors[edge_name] = tc.tensor(1.0, device=pu)
             else:
-                priors[edge_name] = 0.1
+                priors[edge_name] = tc.tensor(0.0, device=pu)
         return priors
 
     def get_obs_lbls(self):
@@ -99,11 +90,11 @@ class FaultyCircuit:
         ltnt_lbls = []
         for prm in self.comp_prms:
             ltnt_lbls.append(prm)
-        for node1 in self.nodes:
-            for node2 in self.nodes:
-                edge_name = str(sorted(tuple({node1.name, node2.name})))
-                if node1.name != node2.name and f"{edge_name}-r" not in ltnt_lbls:
-                    ltnt_lbls.append(f"{edge_name}-r")
+        #for node1 in self.nodes:
+        #    for node2 in self.nodes:
+        #        edge_name = str(sorted(tuple({node1.name, node2.name})))
+        #        if node1.name != node2.name and f"{edge_name}" not in ltnt_lbls:
+        #            ltnt_lbls.append(f"{edge_name}")
         return ltnt_lbls
 
     def get_edges(self):
@@ -111,7 +102,8 @@ class FaultyCircuit:
         for node1 in self.nodes:
             for node2 in self.nodes:
                 if node1.name != node2.name and {node1.name, node2.name} not in edges:
-                    edges.append({node1.name, node2.name})
+                    if not (node1.type == 'v_in' and node2.type == 'v_in'):
+                        edges.append({node1.name, node2.name})
         return edges
 
     def kcl_solver(self, v_ins, forced_nodes=None):
@@ -181,25 +173,27 @@ class FaultyCircuit:
                 out_list.append(v[i])
         return tc.tensor(out_list)
 
-    def inf_kcl_solver(self, v_ins, prms, shorts, forced_nodes=None):
+    def inf_kcl_solver(self, v_ins, prms, shorts, is_forced=None, forced_vals=None):
         # Default to no enforced node voltage overrides
-        if not forced_nodes:
-            forced_nodes = {}
+        if not is_forced:
+            is_forced = {}
+        if not forced_vals:
+            forced_vals = {}
         # Setup fixed voltage vector
-        b = tc.zeros((*v_ins.shape[:-1], len(self.nodes)))
+        b = tc.zeros((*v_ins.shape[:-1], len(self.nodes)), device=pu)
         j = 0
         for i, node in enumerate(self.nodes):
             if node.type == 'v_in':
                 b[..., i] = v_ins[..., j]
                 j += 1
-            elif node.name in forced_nodes:
-                b[..., i] = forced_nodes[node.name]
+            elif node.name in is_forced:
+                b[..., i] = tc.where(is_forced[node.name] == 1, forced_vals[node.name], tc.tensor(0, device=pu))
 
         # Setup KCL node voltage equations
         a_list = []
         for i, node in enumerate(self.nodes):
-            if node.type == 'v_in' or node.name in forced_nodes:
-                eqn = tc.zeros((*v_ins.shape[:-1], len(self.nodes)), dtype=tc.float)
+            if node.type == 'v_in':
+                eqn = tc.zeros((*v_ins.shape[:-1], len(self.nodes)), dtype=tc.float, device=pu)
                 eqn[..., i] = 1
                 a_list.append(eqn)
             else:
@@ -210,7 +204,15 @@ class FaultyCircuit:
                                 prms[f"{node.parent_comp}-ri"], prms[f"{node.parent_comp}-ro"]]
                 else:
                     kcl_prms = None
-                a_list.append(node.get_kcl_eqn('predict', kcl_prms, shorts, v_ins.shape[:-1]))
+                eqn = node.get_kcl_eqn('predict', kcl_prms, shorts, v_ins.shape[:-1])
+                # Now override the kcl equation if the value needs to be forced instead
+                if node.name in is_forced:
+                    for j, node2 in enumerate(self.nodes):
+                        if node2.name == node.name:
+                            eqn[..., j] = tc.where(is_forced[node.name] == 1, tc.tensor(1, device=pu), eqn[..., j])
+                        else:
+                            eqn[..., j] = tc.where(is_forced[node.name] == 1, tc.tensor(0, device=pu), eqn[..., j])
+                a_list.append(eqn)
         a = tc.stack(a_list, -2)
 
         # Solve the system of equations to get the node voltages
@@ -227,16 +229,18 @@ class FaultyCircuit:
                 # Sample all our latent parameters
                 prms = {}
                 for comp in self.comp_prms:
-                    prms[comp] = pyro.sample(f"{comp}-r", dist.Normal(*beliefs[comp]))
+                    prms[comp] = tc.round(pyro.sample(f"{comp}-r", dist.Normal(*beliefs[comp])))
                 shorts = {}
                 for edge in self.edges:
                     edge_name = str(sorted(tuple(edge)))
                     shorts[edge_name] = pyro.sample(
-                        f"{edge_name}-r", dist.Categorical(tc.tensor([beliefs[edge_name], 1 - beliefs[edge_name]])))
+                        f"{edge_name}", dist.Bernoulli(probs=beliefs[edge_name]))
 
                 v = self.inf_kcl_solver(test_ins, prms, shorts)
 
                 # Non-linear circuit effect handling!!! For now just handling op amp power rail saturation
+                is_forced = {}
+                forced_vals = {}
                 for i, node in enumerate(self.nodes):
                     if node.type == 'opamp5' and '.o' in node.name:
                         v_min, v_max = None, None
@@ -248,31 +252,27 @@ class FaultyCircuit:
                                     v_min = v[..., j]
                         # Because the control flow logic of the KCL solver is at the batch level, have to individually
                         # rerun cases where the op amp limits are exceeded, yikes, it's too slow
-                        if v_min is not None:
-                            batch_dims = test_ins.shape[:-1]
-                            if len(batch_dims) == 1:
-                                for n in range(batch_dims[0]):
-                                    if v[n, i] < v_min[n]:
-                                        v[n, :] = self.inf_kcl_solver(
-                                            test_ins[n, :], {prm: prms[prm][n] for prm in prms},
-                                            {edge: shorts[edge][n] for edge in shorts},
-                                            {node.name: v_min[n]})
-                            elif len(batch_dims) == 2:
-                                for n in range(batch_dims[0]):
-                                    for m in range(batch_dims[1]):
-                                        if v[n, m, i] < v_min[n, m]:
-                                            v[n, m, :] = self.inf_kcl_solver(
-                                                test_ins[n, m, :], {prm: prms[prm][n, m] for prm in prms},
-                                                {edge: shorts[edge][n, m] for edge in shorts},
-                                                {node.name: v_min[n, m]})
-                        elif v_max is not None and v[i] > v_max:
-                            v = self.inf_kcl_solver(test_ins, prms, shorts, {node.name: v_max})
+                        if v_min is not None or v_max is not None:
+                            # The is_forced tensor masks which individual samples in the batch have forced values
+                            # The forced_vals tensor provides those forced values
+                            ones = tc.ones(test_ins.shape[:-1], dtype=tc.float, device=pu)
+                            is_forced[node.name] = tc.zeros(test_ins.shape[:-1], dtype=tc.float, device=pu)
+                            forced_vals[node.name] = tc.zeros(test_ins.shape[:-1], dtype=tc.float, device=pu)
+                            if v_min is not None:
+                                vmin_forced = tc.where(v[..., i] < v_min, ones, is_forced[node.name])
+                                forced_vals[node.name] = tc.where(vmin_forced == 1, v_min, forced_vals[node.name])
+                            if v_max is not None:
+                                vmax_forced = tc.where(v[..., i] < v_max, ones, is_forced[node.name])
+                                forced_vals[node.name] = tc.where(vmax_forced == 1, v_max, forced_vals[node.name])
+                            is_forced[node.name] = tc.where(vmin_forced == 1, ones, is_forced[node.name])
+                            is_forced[node.name] = tc.where(vmax_forced == 1, ones, is_forced[node.name])
+                            v = self.inf_kcl_solver(test_ins, prms, shorts, is_forced, forced_vals)
 
                 # Only return the measured node voltages
                 out_list = []
                 for i, node in enumerate(self.nodes):
                     if node.type == 'v_out':
-                        out_list.append(pyro.sample(f"{node.name}", dist.Normal(v[..., i], 0.002)))
+                        out_list.append(pyro.sample(f"{node.name}", dist.Normal(v[..., i], tc.tensor(0.02, device=pu))))
                 outs = tc.stack(out_list, -1)
                 return outs
 

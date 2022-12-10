@@ -47,7 +47,7 @@ def make_mdl(priors):
 
 
 
-def eval_test_eigs(mdl, designs, viz_results: bool = False):
+def eval_test_eigs(mdl, designs, num_balls, viz_results: bool = False):
     # Now for a BOED phase
     optimizer = Adam({'lr': 0.4})
     eig = nmc_eig(
@@ -59,9 +59,16 @@ def eval_test_eigs(mdl, designs, viz_results: bool = False):
         M=100)     # number of gradient steps
 
     if viz_results:
+        bins = np.zeros(4)
+        counts = np.zeros(4)
+        for i, val in enumerate(eig.detach().numpy()):
+            bins[num_balls[i] - 1] += val
+            counts[num_balls[i] - 1] += 1
+        bins /= counts
+
         plt.figure(figsize=(10,5))
-        x_vals = ['4', '3', '2', '1']
-        plt.plot(x_vals, eig.detach().numpy(), marker='o', linewidth=2)
+        x_vals = ['1', '2', '3', '4']
+        plt.plot(x_vals, bins, marker='o', linewidth=2)
         plt.xlabel("Input set")
         plt.ylabel("EIG")
         plt.show()
@@ -71,7 +78,18 @@ def eval_test_eigs(mdl, designs, viz_results: bool = False):
 def riddle_solve():
     scale = WeighResult(6)
     # List out all 6561 possible ways to weigh 8 balls
-    candidate_designs = tc.tensor(list(product([0, 1, 2], repeat=8)), dtype=tc.float)
+    all_designs = tc.tensor(list(product([0, 1, 2], repeat=8)), dtype=tc.int)
+    # Only keep those where the same number of balls are on each side of the scale
+    candidate_designs = []
+    balls_per_side = []
+    for design in range(all_designs.shape[0]):
+        counts = tc.bincount(all_designs[design, :], minlength=3)
+        if counts[0] == counts[1]:
+            candidate_designs.append(all_designs[design, :])
+            balls_per_side.append(counts[0].numpy())
+    candidate_designs = tc.stack(candidate_designs)
+
+
     # Initially the heavier ball is equally likely to be any of the eight balls
     ball_priors = tc.tensor([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125])
     print(f"Prior probabilities for index of heavier ball: {ball_priors[:]}")
@@ -83,7 +101,7 @@ def riddle_solve():
         curr_mdl = make_mdl(ball_priors)
 
         # First determine best test pattern to apply
-        best = int(tc.argmax(eval_test_eigs(curr_mdl, candidate_designs, False)).float().detach())
+        best = int(tc.argmax(eval_test_eigs(curr_mdl, candidate_designs, balls_per_side, True)).float().detach())
 
         # Apply the test pattern to the actual circuit
         print(f"Applying test pattern {candidate_designs[best]}")
