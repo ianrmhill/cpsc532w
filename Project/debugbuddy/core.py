@@ -9,6 +9,7 @@ import numpy as np
 from scipy.stats import norm
 import torch as tc
 import pyro
+from pyro import poutine
 from pyro.contrib.oed.eig import marginal_eig, nmc_eig
 import matplotlib.pyplot as plt
 
@@ -39,35 +40,45 @@ def eval_eigs(prob_mdl, tests, obs_labels=None, circ_prm_labels=None, viz_result
     return accepted_eigs.detach()
 
 
-def condition_fault_model(fault_mdl, inputs, measured, prms, edges):
+def condition_fault_model(fault_mdl, inputs, measured, prms, edges, old_beliefs):
     """
     Numerically estimate the posterior probabilities of the various candidate faults within a circuit using Bayes'
     rule conditioned on the observed circuit measurements.
 
     Currently, we use importance sampling for the numerical estimation technique.
     """
+
     # First generate a bunch of samples from the posterior and accumulate the log probability of each output sample
     cond_mdl = pyro.condition(fault_mdl, {'vo': measured})
-    sampler = pyro.infer.Importance(cond_mdl, num_samples=100)
-    start = time.time()
-    results = sampler.run(inputs)
-    print(time.time() - start)
+    n_ins = pyro.contrib.util.lexpand(inputs, int(1e6))
+    trace = poutine.trace(cond_mdl).get_trace(n_ins)
+    trace.compute_log_prob()
+    log_ws = trace.nodes['vo']['log_prob']
+    log_w_norm = log_ws - tc.logsumexp(log_ws, 0)
+    normed_w = tc.exp(log_w_norm)
 
     # Now sample from the set of sampled outputs based on the log probabilities, the resample values are trace indices
-    normed_w = sampler.get_normalized_weights()
-    resamples = tc.distributions.Categorical(normed_w).sample((1000,))
+    resamples = tc.distributions.Categorical(normed_w).sample((int(1e6),))
+    print(f"Number of samples used to construct updated beliefs: {len(tc.unique(resamples))}")
+    #for sample in tc.unique(resamples):
+    #    print(f"Sample {sample}:")
+    #    for edge in edges:
+    #        edge_name = str(sorted(tuple(edge)))
+    #        if trace.nodes[edge_name]['value'][sample] == 1.0:
+    #            print(f"    {edge_name}: {trace.nodes[edge_name]['value'][sample]}")
 
     # Now take the latent values from each trace in the resampled set and average to get the updated set of beliefs
     new_blfs = {}
     for prm in prms:
-        prm_name = f"{prm}-r"
-        sampled = tc.tensor([results.exec_traces[s].nodes[prm_name]['value'] for s in resamples])
-        mu, std = norm.fit(sampled)
-        new_blfs[prm] = [mu, std]
+        #sampled = tc.tensor([trace.nodes[prm]['value'][s] for s in resamples])
+        #mu, std = norm.fit(sampled)
+        #new_blfs[prm] = tc.tensor([mu, std], device=pu)
+        new_blfs[prm] = old_beliefs[prm]
     for edge in edges:
         edge_name = str(sorted(tuple(edge)))
-        sampled = tc.tensor([results.exec_traces[s].nodes[f"{edge_name}"]['value'] for s in resamples])
-        new_blfs[edge_name] = tc.count_nonzero(sampled == 0) / sampled.size(0)
+        vals = trace.nodes[edge_name]['value']
+        sampled = tc.take(vals, resamples)
+        new_blfs[edge_name] = tc.count_nonzero(sampled == 1, ) / sampled.size(0)
     return new_blfs
 
 
@@ -87,7 +98,6 @@ def guided_debug(circuit=example_circuit, mode='simulated', vcc=False):
     candidate_tests = tc.cat((candidate_tests, gnds), -1)
     if vcc:
         candidate_tests = tc.cat((candidate_tests, vccs), -1)
-    candidate_tests = tc.split(candidate_tests, 16)
 
     # Define the initial fault model and the graphical nodes that we will be conditioning and observing
     curr_mdl = circuit.gen_fault_mdl()
@@ -100,11 +110,13 @@ def guided_debug(circuit=example_circuit, mode='simulated', vcc=False):
         # First we determine what test inputs to apply to the circuit next
         print(f"Determining next best test to conduct...")
         eigs = None
+        candidate_tests = tc.split(candidate_tests, 16)
         for batch in candidate_tests:
             if eigs is None:
-                eigs = eval_eigs(curr_mdl, batch, obs_lbls, ltnt_lbls, True)
+                eigs = eval_eigs(curr_mdl, batch, obs_lbls, ltnt_lbls)
             else:
-                eigs = tc.concat((eigs, eval_eigs(curr_mdl, batch, obs_lbls, ltnt_lbls)))
+                eigs2 = eval_eigs(curr_mdl, batch, obs_lbls, ltnt_lbls)
+                eigs = tc.concat((eigs, eigs2))
         best_test = int(tc.argmax(eigs).detach())
         candidate_tests = tc.concat(candidate_tests)
 
@@ -130,12 +142,30 @@ def guided_debug(circuit=example_circuit, mode='simulated', vcc=False):
         # Now we condition the fault model on the measured data
         print(f"Updating probable faults based on measurement data...")
         new_beliefs = condition_fault_model(curr_mdl, candidate_tests[best_test], measured,
-                                            circuit.comp_prms, circuit.edges)
+                                            circuit.comp_prms, circuit.edges, circuit.priors)
         curr_mdl = circuit.gen_fault_mdl(new_beliefs)
 
         # Now print the probable circuit model for the user to view
+        print('Correct:')
+        print(circuit.correct)
         print('Beliefs updated:')
         print(new_beliefs)
+
+        # Try to analyze the output to identify faulty construction
+        correct_count, total_edges = 0, 0
+        for prior in circuit.priors:
+            if new_beliefs[prior].dim() == 0:
+                total_edges += 1
+                diff = tc.abs(new_beliefs[prior] - circuit.correct[prior])
+                if diff > 0.3:
+                    print(f"Looks like edge {prior} is either shorted or unconnected erroneously!\n"
+                          f"Belief: {new_beliefs[prior]}, correct: {circuit.correct[prior]}")
+                elif diff < 0.1:
+                    correct_count += 1
+        print(f"Currently {correct_count} edges out of {total_edges} are anticipated to be correct.")
+        if total_edges == correct_count:
+            print(f"Seems like your circuit is constructed correctly!")
+
         input('Press Enter to run another cycle...')
 
 

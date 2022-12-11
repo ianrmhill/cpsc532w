@@ -31,11 +31,12 @@ class CircuitNode:
 
 
 class FaultyCircuit:
-    def __init__(self, components, faulty_conns, intended_conns, prms):
+    def __init__(self, components, faulty_conns, intended_conns, prms, restricted_mode=False):
         self.components = components
         self.nodes = self._construct_nodes(components, faulty_conns)
-        self.edges = self.get_edges()
+        self.edges = self.get_edges() if not restricted_mode else self.get_edges(intended_conns)
         self.priors = self._construct_priors(intended_conns, prms)
+        self.correct = self._construct_priors(intended_conns, prms, exact=True)
         self.comp_prms = prms
 
     @staticmethod
@@ -67,16 +68,17 @@ class FaultyCircuit:
                     nodes.append(CircuitNode(comp_name, comp_name, comp_type, ordered, conns))
         return nodes
 
-    def _construct_priors(self, expected_conns, prms):
+    def _construct_priors(self, expected_conns, prms, exact=False):
         priors = {}
         for prm in prms:
-            priors[prm] = tc.tensor([prms[prm], prms[prm] * 0.05], device=pu)
+            priors[prm] = tc.tensor([prms[prm], prms[prm] * 0.05], device=pu) if exact else\
+                          tc.tensor([prms[prm], prms[prm] * 0.05], device=pu)
         for edge in self.edges:
             edge_name = str(sorted(tuple(edge)))
             if edge in expected_conns:
-                priors[edge_name] = tc.tensor(1.0, device=pu)
+                priors[edge_name] = tc.tensor(1.0, device=pu) if exact else tc.tensor(0.9, device=pu)
             else:
-                priors[edge_name] = tc.tensor(0.0, device=pu)
+                priors[edge_name] = tc.tensor(0.0, device=pu) if exact else tc.tensor(0.0, device=pu)
         return priors
 
     def get_obs_lbls(self):
@@ -88,22 +90,25 @@ class FaultyCircuit:
 
     def get_latent_lbls(self):
         ltnt_lbls = []
-        for prm in self.comp_prms:
-            ltnt_lbls.append(prm)
-        #for node1 in self.nodes:
-        #    for node2 in self.nodes:
-        #        edge_name = str(sorted(tuple({node1.name, node2.name})))
-        #        if node1.name != node2.name and f"{edge_name}" not in ltnt_lbls:
-        #            ltnt_lbls.append(f"{edge_name}")
-        return ltnt_lbls
-
-    def get_edges(self):
-        edges = []
+        #for prm in self.comp_prms:
+        #    ltnt_lbls.append(prm)
         for node1 in self.nodes:
             for node2 in self.nodes:
-                if node1.name != node2.name and {node1.name, node2.name} not in edges:
-                    if not (node1.type == 'v_in' and node2.type == 'v_in'):
-                        edges.append({node1.name, node2.name})
+                edge_name = str(sorted(tuple({node1.name, node2.name})))
+                if node1.name != node2.name and f"{edge_name}" not in ltnt_lbls:
+                    ltnt_lbls.append(f"{edge_name}")
+        return ltnt_lbls
+
+    def get_edges(self, conns=None):
+        if conns is not None:
+            edges = conns
+        else:
+            edges = []
+            for node1 in self.nodes:
+                for node2 in self.nodes:
+                    if node1.name != node2.name and {node1.name, node2.name} not in edges:
+                        if not (node1.type == 'v_in' and node2.type == 'v_in'):
+                            edges.append({node1.name, node2.name})
         return edges
 
     def kcl_solver(self, v_ins, forced_nodes=None):
@@ -217,6 +222,10 @@ class FaultyCircuit:
 
         # Solve the system of equations to get the node voltages
         v = tc.linalg.solve(a, b)
+        #index = (1000, 5)
+        #print(a[index[0], index[1], :, :])
+        #print(b[index[0], index[1], :])
+        #print(v[index[0], index[1], :])
         return v
 
     def gen_fault_mdl(self, beliefs=None):
@@ -229,7 +238,7 @@ class FaultyCircuit:
                 # Sample all our latent parameters
                 prms = {}
                 for comp in self.comp_prms:
-                    prms[comp] = tc.round(pyro.sample(f"{comp}-r", dist.Normal(*beliefs[comp])))
+                    prms[comp] = tc.round(pyro.sample(comp, dist.Normal(*beliefs[comp])))
                 shorts = {}
                 for edge in self.edges:
                     edge_name = str(sorted(tuple(edge)))

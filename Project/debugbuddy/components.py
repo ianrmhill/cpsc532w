@@ -76,8 +76,10 @@ def get_pred_eqn(node_name, comp_name, comp_type, nodes, edge_states, prms, batc
         if node != node_name:
             edge_name = str(sorted(tuple({node, node_name})))
             state = edge_states[edge_name]
-            eqn[..., i] += tc.where(state == 1, tc.tensor(-10, device=pu), tc.tensor(-1e-3, device=pu))
-            self_coeff += tc.where(state == 1, tc.tensor(10, device=pu), tc.tensor(1e-3, device=pu))
+            eqn[..., i] += tc.where(state == 1, tc.tensor(-10, device=pu), tc.tensor(-1e-6, device=pu))
+            # eqn[..., i] += tc.where(state == 1, tc.tensor(-10, device=pu), tc.tensor(0, device=pu))
+            self_coeff += tc.where(state == 1, tc.tensor(10, device=pu), tc.tensor(1e-6, device=pu))
+            # self_coeff += tc.where(state == 1, tc.tensor(10, device=pu), tc.tensor(0, device=pu))
     # Now set the node itself to be the sum of the connection weights/coeffs
     for i in range(len(nodes)):
         if nodes[i] == node_name:
@@ -90,7 +92,7 @@ def get_pred_eqn(node_name, comp_name, comp_type, nodes, edge_states, prms, batc
             # Now add the connection to the other side of the resistor, which is potentially two resistors in parallel
             for i in range(len(nodes)):
                 # Identify the node that represents the other resistor terminal
-                if comp_name in nodes[i] and node_name != nodes[i]:
+                if comp_name in nodes[i]:
                     if nodes[i] == node_name:
                         eqn[..., i] += (1 / prms)
                     else:
@@ -100,10 +102,10 @@ def get_pred_eqn(node_name, comp_name, comp_type, nodes, edge_states, prms, batc
             if '.-' in node_name or '.+' in node_name:
                 # Add the resistive connection to the other input terminal
                 for i in range(len(nodes)):
-                    if comp_name in nodes[i] and ('.-' in nodes[i] or '.+' in nodes[i]):
+                    if comp_name in nodes[i]:
                         if nodes[i] == node_name:
                             eqn[..., i] += (1 / prms[1])
-                        else:
+                        elif '.-' in nodes[i] or '.+' in nodes[i]:
                             eqn[..., i] += -(1 / prms[1])
             elif '.o' in node_name:
                 # Add the op amp gain influence
