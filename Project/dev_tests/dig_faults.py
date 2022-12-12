@@ -34,8 +34,8 @@ def eval_test_eigs(mdl, designs, viz_results: bool = False):
         designs,       # design, or in this case, tensor of possible designs
         ['O'],                  # site label of observations, could be a list
         ['N1-F', 'N2-F', 'N3-F', 'N4-F', 'N5-F'],      # site label of 'targets' (latent variables), could also be list
-        N=10000,         # number of samples to draw per step in the expectation
-        M=100)     # number of gradient steps
+        N=5000,         # number of samples to draw per step in the expectation
+        M=5000)     # number of gradient steps
 
     if viz_results:
         plt.figure(figsize=(10,5))
@@ -48,7 +48,7 @@ def eval_test_eigs(mdl, designs, viz_results: bool = False):
 
 
 def amortized_dig_debug():
-    test_circuit = CUT(None, None, None, None, None)
+    test_circuit = CUT(None, 0, None, None, None)
     candidate_designs = tc.tensor([[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1],
                                    [1, 0, 0], [1, 0, 1], [1, 1, 0], [1, 1, 1]], dtype=tc.float)
     for test in candidate_designs:
