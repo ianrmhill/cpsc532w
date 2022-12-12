@@ -32,8 +32,8 @@ def run_simplified_demo():
     # Define the intended circuit design
     components = {'v_in': ['v1', 'v2', 'gnd', 'vcc'], 'v_out': ['vo'],
                   'res': ['r1', 'r2', 'r3', 'r4', 'rl'], 'opamp3': ['u1']}
-    prms = {'r1-r': 1, 'r2-r': 1, 'r3-r': 4, 'r4-r': 4, 'rl-r': 20,
-            'u1-g': 10, 'u1-ri': 100, 'u1-ro': 1}
+    prms = {'r1-r': 10, 'r2-r': 10, 'r3-r': 24, 'r4-r': 24, 'rl-r': 100,
+            'u1-g': 100, 'u1-ri': 1000, 'u1-ro': 1}
     correct_conns = [{'v1', 'r1.1'}, {'r1.2', 'u1.-'}, {'v2', 'r2.1'}, {'r2.2', 'u1.+'},
                      {'u1.-', 'r3.1'}, {'r3.2', 'vo'}, {'u1.+', 'r4.1'}, {'r4.2', 'gnd'},
                      {'gnd', 'rl.1'}, {'vo', 'rl.2'}, {'vo', 'u1.o'}]
@@ -44,8 +44,8 @@ def run_simplified_demo():
     meas_nodes = ['vo', 'u1.-', 'u1.+']
 
     circ = debugbuddy.FaultyCircuit(components, faulty_conns, correct_conns, prms, meas_nodes)
-    outs = circ.simulate_test([0.3, 0.6, 0, 2])
-    print(outs)
+    #outs = circ.simulate_test([0.3, 0.6, 0, 2])
+    #print(outs)
 
     debugbuddy.guided_debug(circ, mode='live', vcc=True)
 
