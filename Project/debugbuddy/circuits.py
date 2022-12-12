@@ -31,9 +31,10 @@ class CircuitNode:
 
 
 class FaultyCircuit:
-    def __init__(self, components, faulty_conns, intended_conns, prms, restricted_mode=False):
+    def __init__(self, components, faulty_conns, intended_conns, prms, meas_nodes, restricted_mode=False):
         self.components = components
         self.nodes = self._construct_nodes(components, faulty_conns)
+        self.to_meas = meas_nodes
         self.edges = self.get_edges() if not restricted_mode else self.get_edges(intended_conns)
         self.priors = self._construct_priors(intended_conns, prms)
         self.correct = self._construct_priors(intended_conns, prms, exact=True)
@@ -174,7 +175,7 @@ class FaultyCircuit:
         # Finally, return the observed output voltages
         out_list = []
         for i, node in enumerate(self.nodes):
-            if node.type == 'v_out':
+            if node.name in self.to_meas:
                 out_list.append(v[i])
         return tc.tensor(out_list)
 
@@ -259,8 +260,6 @@ class FaultyCircuit:
                                     v_max = v[..., j]
                                 elif '.vee' in node2.name:
                                     v_min = v[..., j]
-                        # Because the control flow logic of the KCL solver is at the batch level, have to individually
-                        # rerun cases where the op amp limits are exceeded, yikes, it's too slow
                         if v_min is not None or v_max is not None:
                             # The is_forced tensor masks which individual samples in the batch have forced values
                             # The forced_vals tensor provides those forced values
@@ -280,7 +279,7 @@ class FaultyCircuit:
                 # Only return the measured node voltages
                 out_list = []
                 for i, node in enumerate(self.nodes):
-                    if node.type == 'v_out':
+                    if node.name in self.to_meas:
                         out_list.append(pyro.sample(f"{node.name}", dist.Normal(v[..., i], tc.tensor(0.02, device=pu))))
                 outs = tc.stack(out_list, -1)
                 return outs

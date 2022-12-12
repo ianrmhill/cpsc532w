@@ -16,11 +16,11 @@ def run_demo():
                      {'u1.-', 'r3.1'}, {'r3.2', 'vo'}, {'u1.+', 'r4.1'}, {'r4.2', 'gnd'},
                      {'gnd', 'rl.1'}, {'vo', 'rl.2'}, {'vo', 'u1.o'}, {'u1.vcc', 'vcc'}, {'u1.vee', 'gnd'}]
     # For now circuit is actually assembled correctly
-    faulty_conns = [{'v1', 'r1.1'}, {'r1.2', 'u1.-'}, {'v2', 'r2.1'}, {'r2.2', 'u1.+'},
-                    {'u1.-', 'r3.1'}, {'r3.2', 'vo'}, {'u1.+', 'r4.1'}, {'r4.2', 'gnd'},
-                    {'gnd', 'rl.1'}, {'vo', 'rl.2'}, {'vo', 'u1.o'}, {'u1.vcc', 'vcc'}, {'u1.vee', 'gnd'}]
+    faulty_conns = correct_conns.copy()
+    faulty_conns.remove({'u1.+', 'r4.1'})
+    meas_nodes = ['vo', 'u1.-', 'u1.+']
 
-    circ = debugbuddy.FaultyCircuit(components, faulty_conns, correct_conns, prms)
+    circ = debugbuddy.FaultyCircuit(components, faulty_conns, correct_conns, prms, meas_nodes)
     outs = circ.simulate_test([0.3, 0.6, 0, 2])
     print(outs)
 
@@ -38,16 +38,16 @@ def run_simplified_demo():
                      {'u1.-', 'r3.1'}, {'r3.2', 'vo'}, {'u1.+', 'r4.1'}, {'r4.2', 'gnd'},
                      {'gnd', 'rl.1'}, {'vo', 'rl.2'}, {'vo', 'u1.o'}]
     # For now circuit is actually assembled correctly
-    faulty_conns = [{'v1', 'r1.1'}, {'r1.2', 'u1.-'}, {'v2', 'r2.1'}, {'r2.2', 'u1.+'},
+    faulty_conns = [{'v1', 'r1.1'}, {'r1.2', 'u1.-'}, {'v2', 'r2.1'}, {'r2.1', 'u1.+'},
                     {'u1.-', 'r3.1'}, {'r3.2', 'vo'}, {'u1.+', 'r4.1'}, {'r4.2', 'gnd'},
                     {'gnd', 'rl.1'}, {'vo', 'rl.2'}, {'vo', 'u1.o'}]
     meas_nodes = ['vo', 'u1.-', 'u1.+']
 
-    circ = debugbuddy.FaultyCircuit(components, faulty_conns, correct_conns, prms)
+    circ = debugbuddy.FaultyCircuit(components, faulty_conns, correct_conns, prms, meas_nodes)
     outs = circ.simulate_test([0.3, 0.6, 0, 2])
     print(outs)
 
-    debugbuddy.guided_debug(circ, vcc=True)
+    debugbuddy.guided_debug(circ, mode='live', vcc=True)
 
 
 if __name__ == '__main__':

@@ -49,11 +49,16 @@ def condition_fault_model(fault_mdl, inputs, measured, prms, edges, old_beliefs)
     """
 
     # First generate a bunch of samples from the posterior and accumulate the log probability of each output sample
-    cond_mdl = pyro.condition(fault_mdl, {'vo': measured})
+    cond_mdl = pyro.condition(fault_mdl, measured)
     n_ins = pyro.contrib.util.lexpand(inputs, int(1e6))
     trace = poutine.trace(cond_mdl).get_trace(n_ins)
     trace.compute_log_prob()
-    log_ws = trace.nodes['vo']['log_prob']
+    log_ws = None
+    for node in measured:
+        if log_ws is None:
+            log_ws = trace.nodes[node]['log_prob']
+        else:
+            log_ws += trace.nodes[node]['log_prob']
     log_w_norm = log_ws - tc.logsumexp(log_ws, 0)
     normed_w = tc.exp(log_w_norm)
 
@@ -98,10 +103,16 @@ def guided_debug(circuit=example_circuit, mode='simulated', vcc=False):
     candidate_tests = tc.cat((candidate_tests, gnds), -1)
     if vcc:
         candidate_tests = tc.cat((candidate_tests, vccs), -1)
+        reduced_tests = []
+        for test in candidate_tests:
+            if (test[0] <= test[1]) and ((test[1] - test[0]) <= 0.3):
+                reduced_tests.append(test)
+        candidate_tests = tc.stack(reduced_tests)
+
 
     # Define the initial fault model and the graphical nodes that we will be conditioning and observing
     curr_mdl = circuit.gen_fault_mdl()
-    obs_lbls = circuit.get_obs_lbls()
+    obs_lbls = circuit.to_meas
     ltnt_lbls = circuit.get_latent_lbls()
 
     # With the circuit to debug defined, we can begin recommending measurements to determine implementation faults
@@ -110,7 +121,7 @@ def guided_debug(circuit=example_circuit, mode='simulated', vcc=False):
         # First we determine what test inputs to apply to the circuit next
         print(f"Determining next best test to conduct...")
         eigs = None
-        candidate_tests = tc.split(candidate_tests, 16)
+        candidate_tests = tc.split(candidate_tests, 6)
         for batch in candidate_tests:
             if eigs is None:
                 eigs = eval_eigs(curr_mdl, batch, obs_lbls, ltnt_lbls)
@@ -137,11 +148,21 @@ def guided_debug(circuit=example_circuit, mode='simulated', vcc=False):
             print(f"Measured from test: {measured}.")
         else:
             # If in real-world guided debug mode the user must collect the measurements manually
-            measured = None
+            print(f"Next best test: {candidate_tests[best_test]}.")
+            print(f"Please apply these values and collect measurements at {str(obs_lbls)}.")
+            measured = input('Input measurements as floats separated by spaces...')
+            measured = [tc.tensor(float(val), device=pu) for val in measured.split(' ')]
+
+        obs_set = {}
+        j = 0
+        for i, node in enumerate(circuit.nodes):
+            if node.name in obs_lbls:
+                obs_set[node.name] = measured[j]
+                j += 1
 
         # Now we condition the fault model on the measured data
         print(f"Updating probable faults based on measurement data...")
-        new_beliefs = condition_fault_model(curr_mdl, candidate_tests[best_test], measured,
+        new_beliefs = condition_fault_model(curr_mdl, candidate_tests[best_test], obs_set,
                                             circuit.comp_prms, circuit.edges, circuit.priors)
         curr_mdl = circuit.gen_fault_mdl(new_beliefs)
 
